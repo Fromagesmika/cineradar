@@ -1,0 +1,11 @@
+numpy
+pandas
+pyarrow
+scipy
+torch
+fastapi
+uvicorn
+streamlit
+requests
+pytest
+httpx
