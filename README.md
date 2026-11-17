@@ -1,4 +1,4 @@
-# CinéRadar 🎬
+# CinéRadar
 
 Hidden-gem film recommendation for cinephiles.
 CinéRadar recommends films that match your taste **and** that you would probably not find alone.

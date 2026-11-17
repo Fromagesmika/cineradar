@@ -7,7 +7,7 @@ import streamlit as st
 
 API_URL = "http://localhost:8000"
 
-st.title("🎬 CinéRadar")
+st.title("CinéRadar")
 st.caption("Hidden gems for cinephiles")
 
 user_id = st.number_input("User ID", min_value=1, value=1, step=1)
@@ -19,6 +19,6 @@ if st.button("Recommend"):
         col1, col2 = st.columns([4, 1])
         # TODO: show the title and poster from TMDB instead of the id
         col1.write(f"Film {rec['movie_id']} (score {rec['score']})")
-        if col2.button("👍", key=f"like-{rec['movie_id']}"):
+        if col2.button("Like", key=f"like-{rec['movie_id']}"):
             requests.post(f"{API_URL}/log_interaction",
                           json={"user_id": user_id, "movie_id": rec["movie_id"], "type": "like"}, timeout=10)
