@@ -3,6 +3,8 @@ pandas
 pyarrow
 scipy
 torch
+sentence-transformers
+matplotlib
 fastapi
 uvicorn
 streamlit

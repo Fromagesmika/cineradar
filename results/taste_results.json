@@ -1,0 +1,50 @@
+{
+ "Random": {
+  "NDCG@10": 0.0013,
+  "Recall@10": 0.0013,
+  "Recall@20": 0.0026,
+  "GemRecall@20": 0.0027,
+  "Coverage@10": 1.0,
+  "GemShare@10": 0.8065
+ },
+ "Most popular": {
+  "NDCG@10": 0.0375,
+  "Recall@10": 0.0463,
+  "Recall@20": 0.0796,
+  "GemRecall@20": 0.0,
+  "Coverage@10": 0.0136,
+  "GemShare@10": 0.0
+ },
+ "Text only": {
+  "NDCG@10": 0.0115,
+  "Recall@10": 0.015,
+  "Recall@20": 0.026,
+  "GemRecall@20": 0.0262,
+  "Coverage@10": 0.2097,
+  "GemShare@10": 0.7293
+ },
+ "LightGCN": {
+  "NDCG@10": 0.0549,
+  "Recall@10": 0.0697,
+  "Recall@20": 0.1204,
+  "GemRecall@20": 0.0058,
+  "Coverage@10": 0.2991,
+  "GemShare@10": 0.0188
+ },
+ "NLGCL": {
+  "NDCG@10": 0.0563,
+  "Recall@10": 0.0711,
+  "Recall@20": 0.1216,
+  "GemRecall@20": 0.003,
+  "Coverage@10": 0.217,
+  "GemShare@10": 0.0083
+ },
+ "NLGCL + text, fold-in (app)": {
+  "NDCG@10": 0.0546,
+  "Recall@10": 0.0694,
+  "Recall@20": 0.1171,
+  "GemRecall@20": 0.0,
+  "Coverage@10": 0.0958,
+  "GemShare@10": 0.0008
+ }
+}

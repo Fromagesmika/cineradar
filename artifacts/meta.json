@@ -1,0 +1,50 @@
+{
+ "model": "nlgcl",
+ "epoch": 11,
+ "dim": 64,
+ "n_films": 62423,
+ "n_films_in_graph": 6930,
+ "blend_K": 20,
+ "val_by_K": {
+  "0": {
+   "NDCG@10": 0.0681,
+   "Recall@10": 0.0858,
+   "Recall@20": 0.1448,
+   "GemRecall@20": 0.0057,
+   "Coverage@10": 0.1612,
+   "GemShare@10": 0.0083
+  },
+  "5": {
+   "NDCG@10": 0.0682,
+   "Recall@10": 0.086,
+   "Recall@20": 0.1454,
+   "GemRecall@20": 0.0057,
+   "Coverage@10": 0.159,
+   "GemShare@10": 0.0075
+  },
+  "10": {
+   "NDCG@10": 0.0682,
+   "Recall@10": 0.0861,
+   "Recall@20": 0.1447,
+   "GemRecall@20": 0.0051,
+   "Coverage@10": 0.1593,
+   "GemShare@10": 0.0071
+  },
+  "20": {
+   "NDCG@10": 0.0683,
+   "Recall@10": 0.0864,
+   "Recall@20": 0.1445,
+   "GemRecall@20": 0.0051,
+   "Coverage@10": 0.1623,
+   "GemShare@10": 0.0083
+  },
+  "50": {
+   "NDCG@10": 0.0671,
+   "Recall@10": 0.0847,
+   "Recall@20": 0.141,
+   "GemRecall@20": 0.0048,
+   "Coverage@10": 0.1714,
+   "GemShare@10": 0.0279
+  }
+ }
+}
