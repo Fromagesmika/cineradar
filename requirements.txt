@@ -7,7 +7,7 @@ sentence-transformers
 matplotlib
 fastapi
 uvicorn
-streamlit
+streamlit>=1.31
 requests
 pytest
 httpx
