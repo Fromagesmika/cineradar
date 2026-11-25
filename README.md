@@ -91,14 +91,14 @@ NLGCL beats the popularity baseline by 50% on NDCG@10, and the vector the app co
 | Random | 0.0000 | 0.0029 | 0.0000 | 0.3550 | 0.0000 |
 | Most popular | 0.0135 | 0.0574 | 0.0113 | 0.0000 | 1.0000 |
 | Taste model alone | 0.0341 | 0.1181 | 0.0280 | 0.0910 | 0.0683 |
-| Request only, no taste | 0.0372 | 0.1079 | 0.0260 | 0.0277 | 1.0000 |
-| + taste vectors | 0.0367 | 0.1189 | 0.0259 | 0.1617 | 0.1322 |
-| + film descriptions | 0.0499 | 0.1351 | 0.0352 | 0.1397 | 0.1322 |
-| + memory | 0.0499 | 0.1351 | 0.0352 | 0.1397 | 0.1322 |
-| + hidden-gem re-ranking (full system, slider in the middle) | 0.0496 | 0.1393 | 0.0366 | 0.0900 | 0.1671 |
-| Full system, slider on hidden gems (0.9) | 0.0352 | 0.0863 | 0.0238 | 0.5167 | 0.1595 |
+| Request only, no taste | 0.0361 | 0.1070 | 0.0256 | 0.0280 | 1.0000 |
+| + taste vectors | 0.0350 | 0.1132 | 0.0244 | 0.1703 | 0.1322 |
+| + film descriptions | 0.0448 | 0.1483 | 0.0339 | 0.1393 | 0.1322 |
+| + memory | 0.0448 | 0.1483 | 0.0339 | 0.1393 | 0.1322 |
+| + hidden-gem re-ranking (full system, slider in the middle) | 0.0486 | 0.1488 | 0.0373 | 0.0883 | 0.1671 |
+| Full system, slider on hidden gems (0.9) | 0.0252 | 0.0808 | 0.0171 | 0.5947 | 0.1595 |
 
-The full system scores three times the popularity baseline on NDCG@10 (0.037 against 0.011), and two users asking the same thing share about one film in six. The memory row equals the row above because the test seekers have no click history; the tests check its effect instead (`test_click_changes_next_recommendations`). With the slider on hidden gems, half of the top 10 are hidden gems and NDCG@10 stays at twice the popularity baseline: the user chooses how much accuracy to trade for discovery. All metrics are in `results/redial_results.md`
+The full system scores three times the popularity baseline on NDCG@10 (0.037 against 0.011), and two users asking the same thing share about one film in six. The memory row equals the row above because the test seekers have no click history; the tests check its effect instead (`test_click_changes_next_recommendations`). With the slider on hidden gems, 59% of the top 10 are hidden gems and NDCG@10 (0.017) stays above the popularity baseline: the user chooses how much accuracy to trade for discovery. All metrics are in `results/redial_results.md`
 
 ## Rebuild the data and retrain (optional)
 

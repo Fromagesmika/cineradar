@@ -7,6 +7,8 @@ from __future__ import annotations
 import datetime as dt
 import re
 
+import numpy as np
+
 from src.reco.catalog import get_catalog
 from src.reco.catalog import normalize_text as _nt
 
@@ -227,8 +229,10 @@ def extract_rules(message: str, history: list[dict] | None = None) -> dict:
         out["year_max"] = int(m2.group(2))
     if m3 := re.search(r"(apres|depuis|post) (\d{4})", norm):
         out["year_min"] = int(m3.group(2))
-    if re.search(r"\b(recent|recents|nouveau|nouveaute|nouveautes|recemment|cette annee)\b", norm):
-        out["year_min"] = year_now - 6
+    if re.search(r"\b(recent|recents|recente|recentes|nouveau|nouveaute|nouveautes|recemment|cette annee|newer|new)\b", norm):
+        # « récent » = les 6 dernières années du catalogue (MovieLens 25M s'arrête en 2019)
+        last_year = int(min(year_now, np.nanmax(cat.df["year"].to_numpy(dtype=float))))
+        out["year_min"] = last_year - 6
     if re.search(r"\b(vieux|ancien|anciens|classique noir et blanc|old school)\b", norm):
         out["year_max"] = out["year_max"] or 1985
 
@@ -260,7 +264,7 @@ def extract_rules(message: str, history: list[dict] | None = None) -> dict:
     elif out["reference_ids"]:
         out["intent"] = "similar"
         # « comme X mais plus récent » -> après l'année de X
-        if re.search(r"\bplus recent", norm):
+        if re.search(r"\b(plus recent|more recent|newer)", norm):
             y = cat.get(out["reference_ids"][0])["year"]
             if y:
                 out["year_min"] = y + 1

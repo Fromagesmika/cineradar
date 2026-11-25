@@ -52,6 +52,28 @@ def _safe_taste_scores(user_vec, movie_ids) -> np.ndarray:
         return np.zeros(len(movie_ids))
 
 
+_UNIT_CACHE: dict = {}
+
+
+def _taste_cosine(ref_ids, movie_ids) -> np.ndarray:
+    """Similarité cosinus entre les films de référence et chaque film. Le produit scalaire favorise
+    les films très populaires (vecteurs de grande norme) : pour « comme X », on veut des films proches de X"""
+    if not hasattr(taste, "item_vectors"):
+        return _safe_taste_scores(taste.user_vector(ref_ids, []), movie_ids)
+    key = (id(taste), id(movie_ids), len(movie_ids))
+    if key not in _UNIT_CACHE:
+        vecs, known = taste.item_vectors(list(map(int, movie_ids)))
+        unit = vecs / (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-9)
+        _UNIT_CACHE.clear()
+        _UNIT_CACHE[key] = (unit, {int(m): i for i, m in enumerate(movie_ids)}, known)
+    unit, row, known = _UNIT_CACHE[key]
+    refs = [row[int(m)] for m in ref_ids if int(m) in row and known[row[int(m)]]]
+    if not refs:
+        return np.zeros(len(movie_ids))
+    query = unit[refs].mean(axis=0)
+    return np.where(known, unit @ query, 0.0)
+
+
 # --------------------------------------------------------------------------- mémoire
 
 _provider: MemoryProvider | None = None
@@ -220,7 +242,7 @@ def recommend_detailed(
         if config.use_content:
             ref_sim += _minmax(cat.content_similarity(ref_ids))
         if config.use_taste:
-            ref_sim += _minmax(_safe_taste_scores(taste.user_vector(ref_ids, []), ids))
+            ref_sim += _minmax(_taste_cosine(ref_ids, ids))
         if not config.use_content and not config.use_taste:  # LLM seul : genres partagés
             ref_g = cat.genre_matrix[[cat.id_to_row[m] for m in ref_ids]].max(axis=0)
             ref_sim = cat.genre_matrix @ ref_g / max(ref_g.sum(), 1)

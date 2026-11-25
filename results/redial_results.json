@@ -9,7 +9,7 @@
   "Coverage@10":0.0445829262,
   "Jaccard@10":0.0,
   "cases":300,
-  "sec\/request":0.0470361161
+  "sec\/request":0.0309119105
  },
  {
   "System":"Most popular",
@@ -21,7 +21,7 @@
   "Coverage@10":0.0001922368,
   "Jaccard@10":1.0,
   "cases":300,
-  "sec\/request":0.0079532011
+  "sec\/request":0.0054630232
  },
  {
   "System":"Taste model alone (part 2)",
@@ -33,78 +33,78 @@
   "Coverage@10":0.0081700655,
   "Jaccard@10":0.0683055678,
   "cases":300,
-  "sec\/request":0.026482842
+  "sec\/request":0.0173287821
  },
  {
   "System":"Request only (part 3, no taste)",
   "Recall@1":0.0078888889,
-  "Recall@10":0.0372222222,
-  "Recall@50":0.1078611111,
-  "NDCG@10":0.026012083,
-  "GemShare@10":0.0276666667,
-  "Coverage@10":0.009355526,
+  "Recall@10":0.0361111111,
+  "Recall@50":0.1070277778,
+  "NDCG@10":0.0255599098,
+  "GemShare@10":0.028,
+  "Coverage@10":0.0103327299,
   "Jaccard@10":1.0,
   "cases":300,
-  "sec\/request":0.0212108803
+  "sec\/request":0.0138557537
  },
  {
   "System":"+ taste vectors",
-  "Recall@1":0.0052222222,
-  "Recall@10":0.0366666667,
-  "Recall@50":0.1189444444,
-  "NDCG@10":0.0259094011,
-  "GemShare@10":0.1616666667,
-  "Coverage@10":0.0132803614,
+  "Recall@1":0.007,
+  "Recall@10":0.035,
+  "Recall@50":0.1131666667,
+  "NDCG@10":0.0244114823,
+  "GemShare@10":0.1703333333,
+  "Coverage@10":0.0244461176,
   "Jaccard@10":0.1321685223,
   "cases":300,
-  "sec\/request":0.0604817629
+  "sec\/request":0.0230566899
  },
  {
   "System":"+ film descriptions",
-  "Recall@1":0.0093888889,
-  "Recall@10":0.0499444444,
-  "Recall@50":0.1350555556,
-  "NDCG@10":0.0352286693,
-  "GemShare@10":0.1396666667,
-  "Coverage@10":0.0142735851,
+  "Recall@1":0.0111666667,
+  "Recall@10":0.0448333333,
+  "Recall@50":0.1482777778,
+  "NDCG@10":0.0338835952,
+  "GemShare@10":0.1393333333,
+  "Coverage@10":0.0235169729,
   "Jaccard@10":0.1321685223,
   "cases":300,
-  "sec\/request":0.1105800176
+  "sec\/request":0.052696116
  },
  {
   "System":"+ memory",
-  "Recall@1":0.0093888889,
-  "Recall@10":0.0499444444,
-  "Recall@50":0.1350555556,
-  "NDCG@10":0.0352286693,
-  "GemShare@10":0.1396666667,
-  "Coverage@10":0.0142735851,
+  "Recall@1":0.0111666667,
+  "Recall@10":0.0448333333,
+  "Recall@50":0.1482777778,
+  "NDCG@10":0.0338835952,
+  "GemShare@10":0.1393333333,
+  "Coverage@10":0.0235169729,
   "Jaccard@10":0.1321685223,
   "cases":300,
-  "sec\/request":0.1034871809
+  "sec\/request":0.0491895612
  },
  {
   "System":"+ hidden-gem re-ranking (full system)",
-  "Recall@1":0.0102222222,
-  "Recall@10":0.0495555556,
-  "Recall@50":0.1393333333,
-  "NDCG@10":0.0365752292,
-  "GemShare@10":0.09,
-  "Coverage@10":0.011966743,
+  "Recall@1":0.0108888889,
+  "Recall@10":0.0486111111,
+  "Recall@50":0.1488055556,
+  "NDCG@10":0.0373230155,
+  "GemShare@10":0.0883333333,
+  "Coverage@10":0.0186149336,
   "Jaccard@10":0.1670649168,
   "cases":300,
-  "sec\/request":0.115320127
+  "sec\/request":0.0512025277
  },
  {
   "System":"Full system, slider on hidden gems (0.9)",
-  "Recall@1":0.0059444444,
-  "Recall@10":0.0351666667,
-  "Recall@50":0.0863333333,
-  "NDCG@10":0.0237658678,
-  "GemShare@10":0.5166666667,
-  "Coverage@10":0.0143697035,
+  "Recall@1":0.0035555556,
+  "Recall@10":0.0251666667,
+  "Recall@50":0.0808333333,
+  "NDCG@10":0.0170527315,
+  "GemShare@10":0.5946666667,
+  "Coverage@10":0.0204091441,
   "Jaccard@10":0.1594754546,
   "cases":300,
-  "sec\/request":0.1140298271
+  "sec\/request":0.0510952536
  }
 ]
