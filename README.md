@@ -186,7 +186,7 @@ pytest
 
 The tests take about 2 minutes. They check the model code on a synthetic graph, the chat brain on a small catalog of 79 films, and the database and API on the real catalog, including that a click changes the next recommendations
 
-With only `requirements.txt` installed, the 7 model tests are skipped because they need PyTorch. Install `requirements-train.txt` to run all 55
+With only `requirements.txt` installed, the model tests (tests/test_taste.py) are skipped because they need PyTorch. Install `requirements-train.txt` to run all 55
 
 ## Limits
 

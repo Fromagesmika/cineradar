@@ -213,7 +213,7 @@ def _line(c: dict, i: int = 0) -> str:
         why = [f"dans la même veine que {b}", f"proche de {b}"][i % 2]
     else:
         why = [f"{genre} qui colle à ta demande", f"{genre} que je te conseille les yeux fermés"][i % 2]
-    gem = " — une vraie pépite peu connue" if c["pepite"] else ""
+    gem = ", une vraie pépite peu connue" if c["pepite"] else ""
     return f"• **{c['title']}**{year} : {why}{gem}."
 
 
@@ -299,7 +299,7 @@ def _info_reply(intent: dict) -> str | None:
         return None
     m = cat.get(ids[0])
     genres = ", ".join(FR_GENRE.get(g, g) for g in m["genres"])
-    return f"**{m['title']}** ({m['year']}) — {genres}. {m['overview']}"
+    return f"**{m['title']}** ({m['year']}) : {genres}. {m['overview']}"
 
 
 def chat_turn(user_id: int, message: str, history: list[dict] | None = None,
