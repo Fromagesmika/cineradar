@@ -5,10 +5,10 @@ import streamlit as st
 
 API_URL = os.environ.get("CINERADAR_API", "http://localhost:8000")
 MIN_LIKES = 5
-BUTTONS = [("👍", "liked", "Liked it"), ("👎", "disliked", "Didn't like it"),
-           ("👁️", "seen", "Already seen"), ("🚫", "not_interested", "Not interested")]
+BUTTONS = [("Liked", "liked", "Liked it"), ("Disliked", "disliked", "Didn't like it"),
+           ("Seen", "seen", "Already seen"), ("Not for me", "not_interested", "Not interested")]
 
-st.set_page_config(page_title="CinéRadar", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="CinéRadar", layout="wide")
 
 
 def api(method: str, path: str, **kwargs):
@@ -36,21 +36,25 @@ def film_card(film: dict, user_id: int, key: str, conversation_id=None):
     with st.container(border=True):
         if film.get("poster_url"):
             st.image(film["poster_url"])
-        badge = " 💎" if film.get("hidden_gem") else ""
-        st.markdown(f"**{label(film)}**{badge}")
+        st.markdown(f"**{label(film)}**")
+        if film.get("hidden_gem"):
+            st.markdown(":violet-badge[hidden gem]")
         st.caption(film.get("genres", ""))
         if film.get("because_title"):
             st.caption(f"Because you liked *{film['because_title']}*")
         if film.get("overview"):
             with st.expander("Summary"):
                 st.write(film["overview"])
-        columns = st.columns(len(BUTTONS))
-        for column, (icon, kind, tip) in zip(columns, BUTTONS):
-            if column.button(icon, key=f"{key}-{kind}-{film['movie_id']}", help=tip):
-                api("POST", "/log_interaction", json={"user_id": user_id, "movie_id": film["movie_id"], "type": kind,
-                                                      "source": "chat" if conversation_id else "click",
-                                                      "conversation_id": conversation_id})
-                st.toast(f"{tip}: {film['title']} saved to your profile")
+        # pills wrap onto several lines, so the four labels stay readable in a narrow card
+        widget = f"{key}-opinion-{film['movie_id']}"
+        choice = st.pills("Your opinion", [b[0] for b in BUTTONS], key=widget, label_visibility="collapsed")
+        if choice and st.session_state.get(f"{widget}-saved") != choice:
+            _, kind, tip = next(b for b in BUTTONS if b[0] == choice)
+            api("POST", "/log_interaction", json={"user_id": user_id, "movie_id": film["movie_id"], "type": kind,
+                                                  "source": "chat" if conversation_id else "click",
+                                                  "conversation_id": conversation_id})
+            st.session_state[f"{widget}-saved"] = choice
+            st.toast(f"{tip}: {film['title']} saved to your profile")
 
 
 def film_grid(films: list[dict], user_id: int, key: str, per_row: int = 5, conversation_id=None):
@@ -62,7 +66,7 @@ def film_grid(films: list[dict], user_id: int, key: str, per_row: int = 5, conve
 
 
 def sign_in():
-    st.title("🎬 CinéRadar")
+    st.title("CinéRadar")
     st.subheader("Your film-loving friend who finds the hidden gems you'd never find alone")
     new, existing = st.columns(2)
     with new:
@@ -83,7 +87,7 @@ def sign_in():
 
 
 def questionnaire(user: dict):
-    st.title(f"Welcome {user.get('pseudo') or ''} 👋")
+    st.title(f"Welcome {user.get('pseudo') or ''}")
     st.write("A few questions so I can get to know your taste. Every answer you give later will keep teaching me.")
     if "picked" not in st.session_state:
         st.session_state.picked = {}
@@ -130,12 +134,12 @@ def chat_tab(user: dict):
     st.session_state.setdefault("messages", [])
     st.session_state.setdefault("conversation_id", None)
     if not st.session_state.messages:
-        with st.chat_message("assistant", avatar="🎬"):
+        with st.chat_message("assistant"):
             st.write(f"Hey {user.get('pseudo') or 'there'}! What do you feel like watching? "
                      "You can also tell me about films you loved or hated, I'll remember.")
     for index, message in enumerate(st.session_state.messages):
-        with st.chat_message(message["role"], avatar="🎬" if message["role"] == "assistant" else None):
-            st.markdown(message["content"])
+        with st.chat_message(message["role"], avatar=None):
+            st.markdown(message["content"].replace("\n", "  \n"))  # keep the line breaks of the reply
             if message.get("films"):
                 film_grid(message["films"], user["user_id"], f"chat{index}", conversation_id=message.get("conversation_id"))
     prompt = st.chat_input("e.g. an action film for tonight, but not too violent")
@@ -189,7 +193,7 @@ def main():
         st.session_state.pop("user_id")
         st.rerun()
     with st.sidebar:
-        st.markdown(f"### 🎬 {user.get('pseudo') or 'User'}")
+        st.markdown(f"### {user.get('pseudo') or 'User'}")
         st.caption(f"User ID: {user['user_id']}")
         level = st.slider("Mainstream ↔ Hidden gems", 0.0, 1.0, float(user["cinephile_level"]), 0.05)
         if abs(level - user["cinephile_level"]) > 1e-6:
@@ -205,7 +209,7 @@ def main():
     if not user["onboarding_done"]:
         questionnaire(user)
         return
-    chat, for_you, me = st.tabs(["💬 Chat", "🎯 For you", "👤 My profile"])
+    chat, for_you, me = st.tabs(["Chat", "For you", "My profile"])
     with chat:
         chat_tab(user)
     with for_you:

@@ -1,179 +1,182 @@
 # CinéRadar
 
-Hidden-gem film recommendation for cinephiles.
-CinéRadar recommends films that match your taste **and** that you would probably not find alone.
-It uses the NLGCL model (Xu et al., RecSys 2025) and adds a "hidden-gem" re-ranking step.
+CinéRadar is a film friend for cinephiles. You chat with it, it learns your taste, and it suggests films you would like but would probably not find alone
 
-RecSys Startup Sprint, Group 18.
+Under the hood, a graph model (NLGCL, Xu et al., RecSys 2025) learns taste from 25 million MovieLens ratings. A chat layer turns your message into a request, and a re-ranking step pushes well-rated films that few people have seen. A slider lets you move from mainstream picks to hidden gems
 
-| Member | Role |
-|---|---|
-| Théodore BRICOUT | Project Lead: data split, graph, evaluation |
-| Benoît QUARANTA | Data Engineer + Systems Engineer: data, database, API, web app |
-| Michaël LOPEZ | Lead ML Engineer: NLGCL model |
-| Rayan DAOUDI | ML Engineer: training, `predict()`, re-ranking |
+RecSys Startup Sprint, Group 18: Théodore BRICOUT, Benoît QUARANTA, Michaël LOPEZ, Rayan DAOUDI
 
-## Project structure
+## Run the app in 10 minutes
 
-```
-cineradar/
-├── api/            FastAPI backend (/chat, /recommend, /onboarding, /log_interaction, ...)
-├── app/            Streamlit web app (questionnaire, chat with the film friend, profile)
-├── data/
-│   ├── raw/        downloaded datasets (not in git)
-│   └── processed/  cleaned data (not in git)
-├── models/         trained model files (not in git)
-├── scripts/        download and utility scripts
-├── src/
-│   ├── data/       cleaning + train/test split + graph
-│   ├── eval/       metrics (NDCG@10, Recall@20) and baselines
-│   ├── model/      NLGCL model
-│   ├── service/    SQLite database, user profile, film catalog, chat brain
-│   └── train/      training loop and predict()
-└── tests/          unit tests
-```
+You need Python 3.10 or newer. The raw data and the trained model are not needed: the film catalog and the film vectors are committed in `artifacts/`
 
-## Run the project locally
-
-1. Clone the repository
+1. Clone the repository and install the dependencies (about 5 minutes, mostly PyTorch)
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Fromagesmika/cineradar.git
    cd cineradar
-   ```
-2. Create a virtual environment and install the dependencies
-   ```bash
    python -m venv .venv
    # Windows: .venv\Scripts\activate    |    Mac/Linux: source .venv/bin/activate
    pip install -r requirements.txt
    ```
-3. Download the data (MovieLens 25M, about 250 MB)
+2. Start the API. The first start takes about 20 seconds while it loads the 62,000 films
    ```bash
-   python scripts/download_data.py
+   uvicorn api.main:app
    ```
-4. Start the API
-   ```bash
-   uvicorn api.main:app --reload
-   ```
-   Open http://localhost:8000/docs to test the endpoints.
-5. Start the web app (in a second terminal)
+   The endpoints can be tested at http://localhost:8000/docs
+3. Start the web app in a second terminal, with the same environment activated
    ```bash
    streamlit run app/streamlit_app.py
    ```
-   Open http://localhost:8501, pick a nickname, answer the questionnaire and start chatting
+   Open http://localhost:8501, pick a nickname, answer the questionnaire and start chatting. You can write in French or in English, for example "un polar sombre et peu connu" or "something like Blade Runner but more recent"
 
-The app runs without the data: the taste vectors are committed in `artifacts/`, and the database
-(`data/cineradar.db`) is created on first start
+No API key is needed. Without one, the chat reads messages with rules and answers with sentence templates. With an `ANTHROPIC_API_KEY` (or an `OPENAI_API_KEY`, see `src/llm/client.py`) set before starting the API, a language model reads the messages and writes the answers. It may only talk about the films the ranking gave it, and the code falls back to the rules if it names another film or if the call fails
 
-## Re-train the model (optional)
+## How it works
 
-```bash
-python -m src.data.preprocess                                        # clean the data
-python -m src.data.split                                             # train / validation / test split
-python -m src.model.content                                          # text vector of every film
-python -m src.train.train --name lightgcn --cl-weight 0 --lr 5e-3    # LightGCN (backup model)
-python -m src.train.train --name nlgcl --cl-weight 0.1 --lr 5e-3     # NLGCL
-python -m src.model.export --name nlgcl                              # writes artifacts/item_emb.npy
-python -m src.model.evaluate_taste                                   # test results vs baselines
-python -m src.model.plot_curves lightgcn nlgcl                       # results/curves.png
-```
+A chat turn goes through four parts
 
-On a laptop CPU, one epoch takes about 15 s for LightGCN and about 1 to 2 min for NLGCL
+1. Data (`src/data/`). MovieLens 25M gives the ratings. TMDB gives a summary, a poster, the director and the cast for 61,351 of the 62,423 films. ReDial gives 11,348 real English dialogues between a person looking for a film and a person recommending one, and 94% of the film mentions in them are linked to MovieLens films
+2. Taste model (`src/model/`). NLGCL learns one vector per user and per film from the likes (4 stars or more) of 15,000 MovieLens users. Every film also gets a vector learned from its text (title, genres, tags, summary), which is the only signal for films outside the graph. A new user needs no retraining: their vector is a weighted mean of the films they liked, minus half of the films they disliked
+3. Chat brain (`src/llm/`, `src/reco/`). The message becomes a request: genres, keywords, reference films ("like Heat"), period, films you loved or hated. Candidates are picked for the request, then ranked by request match, taste vector and user memory. The hidden-gem step then moves films up or down according to the slider and the average MovieLens rating, so a hidden gem is a film that is both little known and well rated. The reply explains each pick ("because you liked X")
+4. Database, API and app (`src/service/`, `api/`, `app/`). Every answer to the questionnaire, every film named in the chat and every click (liked, disliked, seen, not for me) is stored in SQLite. The next recommendation reads this memory, so a click changes what comes next
 
-To try the model without the data, train on a small synthetic graph (1,000 users x 500 films):
-
-```bash
-python -m src.train.train --toy --name toy --batch 512 --lr 5e-3
-```
-
-## Taste model (part 2)
-
-`src/model/taste.py` is the only file the other parts need. It reads `artifacts/item_emb.npy`, which is committed, so nobody has to retrain
-
-```python
-from src.model import taste
-
-vec = taste.user_vector(liked_ids=[318, 858], disliked_ids=[2571])  # MovieLens movie_id
-scores = taste.score(vec, [1, 2, 3])          # higher is better, unknown films get -inf
-reasons = taste.because([318, 858], [1, 2, 3]) # liked film closest to each film
-```
-
-Every film of MovieLens has a vector. Films with many likes use the vector learned by the graph model, and films with few or no likes lean on a vector computed from their title, genres and tags (see `src/model/export.py`). A new user does not need retraining: their vector is the average of the films they liked. If `artifacts/` is missing, `taste.py` switches to random vectors so the app still runs
-
-## Database, API and web app (part 4)
-
-### How the profile evolves
-
-1. **Questionnaire** (first visit): films you loved and hated, genres you love and avoid,
-   mainstream ↔ hidden-gem slider
-2. **Every chat message** is read by the brain: films you mention as loved or hated, genres,
-   the film you want tonight. Lasting facts go to the database, the request only drives this answer
-3. **Every click** on a film (👍 liked, 👎 disliked, 👁️ seen, 🚫 not interested) goes to `/log_interaction`
-4. After each new opinion, the user's taste vector is recomputed with `taste.user_vector()`
-   (no retraining) and stored in `user_embeddings`
-
-So two users asking for "an action film" get different lists: the candidates match the request,
-the order comes from each user's taste vector, then the hidden-gem re-ranking applies their slider
-
-### Database (`src/service/db.py`, SQLite)
+### Database
 
 | Table | Content |
 |---|---|
-| `users` | nickname, cinephile level (slider), onboarding done |
+| `users` | nickname, slider value, questionnaire done |
 | `movies` | film catalog, popular or hidden gem |
-| `interactions` | one row per opinion: `liked`, `disliked`, `seen`, `suggested`, `not_interested`, `rating`, with its source (`questionnaire`, `chat`, `click`, `redial`, `movielens`) |
-| `profile_facts` | genres loved or avoided and facts learned in the chat |
-| `conversations`, `messages` | chat history, with what was extracted and what was recommended |
+| `interactions` | one row per opinion (`liked`, `disliked`, `seen`, `suggested`, `not_interested`, `rating`) with its source (`questionnaire`, `chat`, `click`) |
+| `profile_facts` | genres loved or avoided, facts learned in the chat |
+| `conversations`, `messages` | chat history, with the request read from each message and the films shown |
 | `user_embeddings` | current taste vector of each user |
 
-The `liked` / `seen` / `suggested` labels are the same as the ReDial questionnaire, so ReDial
-dialogues can be loaded into the same table (`source = 'redial'`)
-
-The database path can be changed with the `CINERADAR_DB` environment variable
+The database is created on first start in `data/cineradar.db`. The `CINERADAR_DB` environment variable changes its path
 
 ### API
 
 | Endpoint | Use |
 |---|---|
-| `GET /health` | status, catalog source, mock mode |
-| `GET /genres`, `GET /movies/search?q=`, `GET /movies/popular`, `GET /movies/{id}` | catalog |
-| `POST /users` | create a user |
-| `POST /onboarding` | save the questionnaire |
-| `GET /profile/{id}`, `PATCH /profile/{id}` | read the profile, change the slider |
-| `POST /chat` | one message to the film friend: reply + recommendations |
-| `GET /recommend?user_id=&k=&alpha=&genre=` | recommendations without chat |
-| `GET /explain?user_id=&movie_id=` | "because you liked X" |
+| `POST /users`, `POST /onboarding` | create a user, save the questionnaire |
+| `POST /chat` | one message to the film friend: reply and film cards |
+| `GET /recommend?user_id=&k=&alpha=&genre=` | recommendations without chat (`alpha` is the slider) |
 | `POST /log_interaction` | save a click |
+| `GET /profile/{id}`, `PATCH /profile/{id}` | read the profile, change the slider |
+| `GET /explain?user_id=&movie_id=` | liked film closest to a film |
+| `GET /movies/search?q=`, `GET /movies/{id}`, `GET /genres` | catalog |
 
-### Where part 3 plugs in
+## Results
 
-`src/service/brain.py` uses part 3 automatically when these functions exist, and a simple
-built-in version (keywords + taste model + hidden-gem re-ranking, no API key needed) otherwise:
+### Taste model on MovieLens
 
-```python
-src/llm/agent.py    extract(message, history) -> dict      reply(message, profile, recos) -> str
-src/reco/engine.py  recommend(user_id, intent, k, cinephile) -> list[{"movie_id", "score", "because_movie_id"}]
-```
+Test set: the last 10% of each user's likes in time order, 14,969 users, the 6,930 films of the graph ranked for each user. Hidden gems are the films outside the 20% most liked
 
-`extract` returns `{"intent": {"genres", "avoid_genres", "reference_ids", "min_year", "max_year",
-"cinephile_shift"}, "likes", "dislikes", "genres_liked", "genres_avoided", "facts"}`.
-The profile of a user is `src.service.profile.get_profile(db.connect(), user_id)`
+| Method | NDCG@10 | Recall@20 | GemRecall@20 | Coverage@10 |
+|---|---|---|---|---|
+| Random | 0.0013 | 0.0026 | 0.0027 | 1.0000 |
+| Most popular | 0.0375 | 0.0796 | 0.0000 | 0.0136 |
+| Text vectors only | 0.0094 | 0.0217 | 0.0179 | 0.2179 |
+| LightGCN | 0.0549 | 0.1204 | 0.0058 | 0.2991 |
+| NLGCL | 0.0563 | 0.1216 | 0.0030 | 0.2170 |
+| NLGCL + text, user vector without retraining (used in the app) | 0.0563 | 0.1199 | 0.0052 | 0.2649 |
 
-### Film catalog
+NLGCL beats the popularity baseline by 50% on NDCG@10, and the vector the app computes for a new user does as well as the trained one. On its own, the model rarely recommends hidden gems, so the system adds a re-ranking step. Full table: `results/taste_results.md`, learning curves: `results/curves.png`
 
-Without the data, the app uses 86 well-known films (`src/service/seed_movies.csv`).
-To use the full MovieLens catalog (62,000 films, with TMDB summaries and posters if
-`data/processed/tmdb.parquet` exists), run once after preprocessing and commit the file:
+### Whole system on ReDial dialogues
+
+300 dialogues from 75 test seekers who are not used anywhere else. The system reads what the seeker wrote before the first suggestion, together with the films they said they liked, and must find the films the recommender suggested (950 films, about 3 per dialogue, among 18,430 candidates). Jaccard@10 measures how much the top 10s of two different seekers overlap when both ask for "an action film": lower means more personal
+
+| System | Recall@10 | Recall@50 | NDCG@10 | GemShare@10 | Jaccard@10 |
+|---|---|---|---|---|---|
+| Random | 0.0000 | 0.0029 | 0.0000 | 0.3550 | 0.0000 |
+| Most popular | 0.0135 | 0.0574 | 0.0113 | 0.0000 | 1.0000 |
+| Taste model alone | 0.0341 | 0.1181 | 0.0280 | 0.0910 | 0.0683 |
+| Request only, no taste | 0.0372 | 0.1079 | 0.0260 | 0.0277 | 1.0000 |
+| + taste vectors | 0.0367 | 0.1189 | 0.0259 | 0.1617 | 0.1322 |
+| + film descriptions | 0.0499 | 0.1351 | 0.0352 | 0.1397 | 0.1322 |
+| + memory | 0.0499 | 0.1351 | 0.0352 | 0.1397 | 0.1322 |
+| + hidden-gem re-ranking (full system, slider in the middle) | 0.0496 | 0.1393 | 0.0366 | 0.0900 | 0.1671 |
+| Full system, slider on hidden gems (0.9) | 0.0352 | 0.0863 | 0.0238 | 0.5167 | 0.1595 |
+
+The full system scores three times the popularity baseline on NDCG@10 (0.037 against 0.011), and two users asking the same thing share about one film in six. The memory row equals the row above because the test seekers have no click history; the tests check its effect instead (`test_click_changes_next_recommendations`). With the slider on hidden gems, half of the top 10 are hidden gems and NDCG@10 stays at twice the popularity baseline: the user chooses how much accuracy to trade for discovery. All metrics are in `results/redial_results.md`
+
+## Rebuild the data and retrain (optional)
+
+This takes about one hour on a laptop CPU and about 1.5 GB of downloads
 
 ```bash
-python -m scripts.export_catalog      # writes artifacts/catalog.csv.gz
+python scripts/download_data.py                                      # MovieLens 25M, ReDial, TMDB into data/raw/
+python -m src.data.preprocess                                        # likes of 15,000 users, film table
+python -m src.data.tmdb                                              # summaries, posters, rating counts
+python -m src.data.redial                                            # link ReDial films to MovieLens, split by seeker
+python -m src.data.split                                             # train / validation / test split, graph
+python -m src.model.content                                          # text vector of every film
+python -m src.train.train --name lightgcn --cl-weight 0 --lr 5e-3    # LightGCN (backup model)
+python -m src.train.train --name nlgcl --cl-weight 0.1 --lr 5e-3     # NLGCL
+python -m src.model.export --name nlgcl                              # artifacts/item_emb.npy
+python -m scripts.export_catalog                                     # artifacts/catalog.csv.gz
+python -m src.model.evaluate_taste                                   # MovieLens results
+python -m src.eval.evaluate                                          # ReDial results and ablations
 ```
 
-## Run the tests
+One epoch takes about 15 s for LightGCN and 1 to 2 minutes for NLGCL. To try the training code without the data, train on a small synthetic graph: `python -m src.train.train --toy --name toy --batch 512 --lr 5e-3`
+
+## Use the parts from Python
+
+```python
+from src.model import taste                        # part 2
+vec = taste.user_vector(liked_ids=[318, 858], disliked_ids=[2571])   # MovieLens movie_id
+scores = taste.score(vec, [1, 2, 3])               # higher is better
+
+from src.reco.engine import recommend              # part 3
+recommend(user_id, {"genres": ["Crime"], "liked_ids": [858]}, k=10, cinephile=0.8)
+# -> [{"movie_id", "score", "because_movie_id"}, ...]
+
+from src.eval.evaluate import evaluate             # part 1
+table = evaluate(recommend)                        # any function with the contract above
+```
+
+More detail on the chat brain (request format, memory, score formula) is in `README_partie3.md`, in French
+
+## Project structure
+
+```
+cineradar/
+├── api/            FastAPI backend
+├── app/            Streamlit web app
+├── artifacts/      film catalog and film vectors used by the app (committed)
+├── data/           raw and processed data, SQLite database (not in git)
+├── models/         trained models (not in git)
+├── results/        evaluation tables and learning curves
+├── scripts/        downloads, catalog export, terminal chat demo
+├── src/
+│   ├── data/       MovieLens cleaning, TMDB, ReDial, split and graph
+│   ├── eval/       metrics and the evaluation harness
+│   ├── model/      NLGCL, text vectors, export, taste.py
+│   ├── train/      training loop
+│   ├── llm/        message reading and reply (rules or language model)
+│   ├── reco/       candidates, ranking, hidden gems, user memory
+│   └── service/    database, profile, catalog, chat turn
+└── tests/          54 tests
+```
+
+## Tests
 
 ```bash
 pytest
 ```
 
-## Status
+The tests take about 2 minutes. They check the model code on a synthetic graph, the chat brain on a small catalog of 79 films, and the database and API on the real catalog, including that a click changes the next recommendations
 
-Work in progress. See the GitHub issues for the task list.
+## Limits
+
+- Without an API key, the rules understand short requests well but miss complex sentences, and French titles are not recognised ("Le Parrain" must be written "The Godfather")
+- Hidden gems come from MovieLens users, who mostly rate English-language films released before 2020
+- The ReDial scores are low in absolute terms because each recommender suggested about 3 films among 18,430 possible ones
+
+## Data sources
+
+- MovieLens 25M, GroupLens Research (F. M. Harper and J. A. Konstan, 2015)
+- ReDial, Li et al., "Towards Deep Conversational Recommendations", NeurIPS 2018
+- TMDB metadata from a public dump on Hugging Face (`HenryWaltson/TMDB-IMDB-Movies-Dataset`). This product uses TMDB data but is not endorsed or certified by TMDB
+- NLGCL, Xu et al., RecSys 2025

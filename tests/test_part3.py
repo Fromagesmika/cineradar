@@ -3,6 +3,7 @@ import os
 
 os.environ["LLM_OFFLINE"] = "1"
 os.environ["TASTE_BACKEND"] = "mock"
+os.environ["RECO_CATALOG"] = "mock"
 
 import numpy as np
 import pytest

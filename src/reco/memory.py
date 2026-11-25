@@ -102,7 +102,9 @@ def build_memory(
     genre_acc = np.zeros(len(CANONICAL_GENRES))
     genre_norm = 1e-9
 
-    for e in sorted(events, key=lambda e: e.get("ts") or 0):
+    for e in sorted(events, key=lambda e: str(e.get("ts") or 0)):
+        if e.get("movie_id") is None:  # titre introuvable dans le catalogue
+            continue
         mid = int(e["movie_id"])
         typ = str(e.get("type", "")).lower()
         ts = e.get("ts") or now
@@ -206,19 +208,35 @@ class InMemoryProvider:
 
 
 class SQLiteProvider:
-    """Lit la base SQLite de la partie 4.
+    """Lit la base SQLite de la partie 4 (src/service/db.py).
 
-    Les requêtes sont regroupées ici pour être ajustées facilement au schéma final
-    (à valider lundi). Schéma supposé :
-        users(user_id, cinephile, ...)
-        interactions(user_id, movie_id, type, value, source, ts)
-        profile_facts(user_id, key, value, ts)
-        user_embeddings(user_id, vector BLOB|TEXT json, updated_at)
+    Les types de la base (liked, disliked, seen, suggested, not_interested, rating) et leur source
+    (questionnaire, chat, click) sont traduits vers les événements de build_memory. Pour les genres,
+    seul le dernier avis compte (un genre aimé puis évité est évité), comme dans src/service/profile.py.
     """
 
-    SQL_EVENTS = "SELECT movie_id, type, value, ts FROM interactions WHERE user_id = ?"
-    SQL_FACTS = "SELECT key, value FROM profile_facts WHERE user_id = ?"
-    SQL_CINEPHILE = "SELECT cinephile FROM users WHERE user_id = ?"
+    SQL_EVENTS = """
+        SELECT movie_id,
+               CASE WHEN type = 'liked' AND source = 'questionnaire' THEN 'onboarding_like'
+                    WHEN type = 'disliked' AND source = 'questionnaire' THEN 'onboarding_dislike'
+                    WHEN type = 'liked' AND source = 'chat' THEN 'chat_like'
+                    WHEN type = 'disliked' AND source = 'chat' THEN 'chat_dislike'
+                    WHEN type = 'liked' THEN 'like'
+                    WHEN type = 'disliked' THEN 'dislike'
+                    WHEN type = 'suggested' THEN 'shown'
+                    ELSE type END,
+               value, ts
+        FROM interactions WHERE user_id = ? ORDER BY id"""
+    SQL_FACTS = """
+        SELECT CASE key WHEN 'genre_liked' THEN 'genre_like' WHEN 'genre_avoided' THEN 'genre_dislike'
+                        ELSE key END,
+               value
+        FROM profile_facts f
+        WHERE user_id = ? AND (key NOT IN ('genre_liked', 'genre_avoided') OR id = (
+            SELECT MAX(id) FROM profile_facts g WHERE g.user_id = f.user_id AND g.value = f.value
+            AND g.key IN ('genre_liked', 'genre_avoided')))
+        ORDER BY id"""
+    SQL_CINEPHILE = "SELECT cinephile_level FROM users WHERE user_id = ?"
     SQL_EMB = "SELECT vector FROM user_embeddings WHERE user_id = ?"
 
     def __init__(self, db_path: str):

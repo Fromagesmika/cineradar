@@ -13,7 +13,8 @@ EXPORTED = ARTIFACTS / "catalog.csv.gz"
 SEED = Path(__file__).resolve().parent / "seed_movies.csv"
 POSTER_BASE = "https://image.tmdb.org/t/p/w342"
 ARTICLES = ("the", "a", "an", "le", "la", "les", "l", "un", "une", "der", "die", "das", "el", "il")
-COLUMNS = ["movie_id", "title", "year", "genres", "tags", "overview", "poster_url", "tmdb_id"]
+COLUMNS = ["movie_id", "title", "year", "genres", "tags", "overview", "poster_url", "tmdb_id", "redial_id",
+           "directors", "cast", "n_ratings", "mean_rating"]
 
 
 def normalize(text) -> str:
@@ -60,8 +61,10 @@ def _with_columns(movies: pd.DataFrame) -> pd.DataFrame:
     movies["title"] = movies["title"].map(fix_title)
     movies["year"] = pd.to_numeric(movies["year"], errors="coerce")
     movies["tmdb_id"] = pd.to_numeric(movies["tmdb_id"], errors="coerce")
-    for column in ("genres", "tags", "overview"):
+    for column in ("genres", "tags", "overview", "directors", "cast"):
         movies[column] = movies[column].fillna("").astype(str)
+    movies["n_ratings"] = pd.to_numeric(movies["n_ratings"], errors="coerce").fillna(0)
+    movies["mean_rating"] = pd.to_numeric(movies["mean_rating"], errors="coerce")
     movies["poster_url"] = movies["poster_url"].where(movies["poster_url"].notna(), None)
     return movies
 
@@ -82,14 +85,18 @@ def load() -> pd.DataFrame:
     if source == "seed" and not likes:
         movies["likes"] = np.linspace(len(movies), 1, len(movies))
     in_graph = movies["likes"] > 0
-    threshold = movies.loc[in_graph, "likes"].quantile(1 - POPULAR_SHARE) if in_graph.any() else np.inf
-    movies["popular"] = movies["likes"] >= threshold
+    # Popularity: number of ratings in the full MovieLens 25M (part 1) when known, else likes in the graph
+    count = movies["n_ratings"] if movies["n_ratings"].sum() > 0 else movies["likes"]
+    rated = count > 0
+    threshold = count[rated].quantile(1 - POPULAR_SHARE) if rated.any() else np.inf
+    movies["popularity"] = count
+    movies["popular"] = count >= threshold
     movies["in_graph"] = in_graph
     movies["key"] = movies["title"].map(normalize)
     movies["short_key"] = movies["key"].map(short_key)
     movies["genre_set"] = movies["genres"].map(lambda g: frozenset(x.strip() for x in g.split(",") if x.strip()))
     movies.attrs["source"] = source
-    return movies.set_index("movie_id", drop=False).sort_values("likes", ascending=False)
+    return movies.set_index("movie_id", drop=False).sort_values(["popularity", "likes"], ascending=False)
 
 
 def source() -> str:
@@ -132,7 +139,7 @@ def search(query: str, limit: int = 10) -> list[dict]:
         return []
     films = load()
     hits = films[films["key"].str.contains(key, regex=False) | films["short_key"].str.contains(key, regex=False)]
-    starts = hits["key"].str.startswith(key)
+    starts = hits["key"].str.startswith(key) | hits["short_key"].str.startswith(key)
     hits = pd.concat([hits[starts], hits[~starts]])
     return cards(hits["movie_id"].head(limit))
 
@@ -140,6 +147,7 @@ def search(query: str, limit: int = 10) -> list[dict]:
 def popular(limit: int = 50, genres=None) -> list[dict]:
     films = load()
     films = films[films["in_graph"]] if films["in_graph"].any() else films
+    films = films.sort_values("likes", ascending=False)
     if genres:
         wanted = set(genres)
         films = films[films["genre_set"].map(lambda g: bool(g & wanted))]

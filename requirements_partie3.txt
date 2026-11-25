@@ -1,6 +1,0 @@
-numpy
-pandas
-scikit-learn
-pyarrow
-pytest
-# optionnel (Colab) : sentence-transformers

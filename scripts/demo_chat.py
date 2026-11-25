@@ -17,7 +17,8 @@ from src.reco.catalog import get_catalog  # noqa: E402
 cat = get_catalog()
 T = cat.find_title
 mem = engine.DEMO_MEMORY
-mem.onboarding(1, [T(x) for x in ["The Matrix", "Inception", "Interstellar", "Avengers: Endgame"]],
+engine.set_memory_provider(mem)  # the demo keeps its profiles in memory, not in the app database
+mem.onboarding(1, [T(x) for x in ["The Matrix", "Inception", "Interstellar", "Edge of Tomorrow"]],
                genres_liked=["Sci-Fi"], cinephile=0.2)
 mem.onboarding(2, [T(x) for x in ["Le Samouraï", "Oldboy", "Heat", "Memories of Murder"]],
                genres_disliked=["Romance"], cinephile=0.9)

@@ -6,7 +6,12 @@ from pydantic import BaseModel, Field
 from src.model import taste
 from src.service import brain, catalog, db, profile
 
-app = FastAPI(title="CinéRadar API", version="0.2")
+app = FastAPI(title="CinéRadar API", version="0.3")
+
+
+@app.on_event("startup")
+def warm_up():
+    brain.warm_up()  # about 20 s once, then each chat message takes well under a second
 
 
 @contextmanager

@@ -16,12 +16,12 @@
   "GemShare@10": 0.0
  },
  "Text only": {
-  "NDCG@10": 0.0115,
-  "Recall@10": 0.015,
-  "Recall@20": 0.026,
-  "GemRecall@20": 0.0262,
-  "Coverage@10": 0.2097,
-  "GemShare@10": 0.7293
+  "NDCG@10": 0.0094,
+  "Recall@10": 0.0125,
+  "Recall@20": 0.0217,
+  "GemRecall@20": 0.0179,
+  "Coverage@10": 0.2179,
+  "GemShare@10": 0.7059
  },
  "LightGCN": {
   "NDCG@10": 0.0549,
@@ -40,11 +40,11 @@
   "GemShare@10": 0.0083
  },
  "NLGCL + text, fold-in (app)": {
-  "NDCG@10": 0.0546,
-  "Recall@10": 0.0694,
-  "Recall@20": 0.1171,
-  "GemRecall@20": 0.0,
-  "Coverage@10": 0.0958,
-  "GemShare@10": 0.0008
+  "NDCG@10": 0.0563,
+  "Recall@10": 0.0709,
+  "Recall@20": 0.1199,
+  "GemRecall@20": 0.0052,
+  "Coverage@10": 0.2649,
+  "GemShare@10": 0.0185
  }
 }

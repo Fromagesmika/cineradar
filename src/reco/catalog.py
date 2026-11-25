@@ -1,6 +1,7 @@
 """Catalogue de films : chargement, normalisation, recherche par titre et recherche sémantique.
 
-Source : data/processed/movies.parquet (partie 1) si présent, sinon le mini-catalogue mock.
+Source : le catalogue de l'appli (src/service/catalog.py, mêmes identifiants MovieLens), sauf
+RECO_CATALOG=mock (mini-catalogue de 79 films des tests) ou MOVIES_PATH=fichier.parquet.
 Colonnes attendues (contrat) : movie_id, title, year, tmdb_id, redial_id, genres, tags,
 overview, poster_url, popularity_bucket. `genres` et `tags` peuvent être des listes ou des
 chaînes séparées par "|" / ";" / ",". `aliases` (titres français) est optionnelle.
@@ -70,6 +71,7 @@ class Catalog:
         df["overview"] = df.get("overview", pd.Series([""] * len(df))).fillna("").astype(str)
         df["year"] = pd.to_numeric(df.get("year"), errors="coerce")
         df["pop"] = self._popularity(df)
+        df["quality"] = self._quality(df)
         self.df = df
         self.ids = df["movie_id"].to_numpy()
         self.id_to_row = {int(m): i for i, m in enumerate(self.ids)}
@@ -100,6 +102,18 @@ class Catalog:
                 s = (s - s.min()) / max(s.max() - s.min(), 1e-9)
             return s
         return pd.Series(0.5, index=df.index)
+
+    @staticmethod
+    def _quality(df: pd.DataFrame) -> pd.Series:
+        """Qualité dans [0,1] : percentile de la note moyenne bayésienne (une pépite = peu connue ET bien notée).
+        0.5 partout si les notes sont absentes (catalogue mock ou liste de secours)."""
+        if "mean_rating" not in df or df["mean_rating"].isna().all():
+            return pd.Series(0.5, index=df.index)
+        n = pd.to_numeric(df.get("n_ratings"), errors="coerce").fillna(0)
+        mean = pd.to_numeric(df["mean_rating"], errors="coerce")
+        prior = float((mean * n).sum() / max(n.sum(), 1))
+        bayes = (n * mean.fillna(prior) + 50 * prior) / (n + 50)
+        return bayes.rank(pct=True)
 
     # ------------------------------------------------------------------ titres
     def _build_title_index(self):
@@ -204,11 +218,31 @@ class Catalog:
         return len(self.ids)
 
 
-@lru_cache(maxsize=1)
+MIN_RATINGS = 20  # films with fewer MovieLens ratings are too obscure to recommend (and too many)
+
+
+def _app_catalog() -> pd.DataFrame:
+    """Same films and ids as the app (src/service/catalog.py): export, movies.parquet or seed list"""
+    from src.service import catalog as app_catalog
+
+    films = app_catalog.load().reset_index(drop=True)
+    if films["n_ratings"].sum() > 0:
+        films = films[films["n_ratings"] >= MIN_RATINGS]
+    return films.sort_values("popularity", ascending=False)
+
+
+@lru_cache(maxsize=2)
+def _cached(path: str | None, backend: str | None) -> Catalog:
+    if backend == "mock":
+        return Catalog(load_mock_catalog())
+    if path and Path(path).exists():
+        return Catalog(pd.read_parquet(path))
+    return Catalog(_app_catalog())
+
+
 def get_catalog(path: str | None = None) -> Catalog:
-    p = Path(path or os.getenv("MOVIES_PATH", DEFAULT_MOVIES_PATH))
-    if p.exists():
-        df = pd.read_parquet(p)
-    else:
-        df = load_mock_catalog()
-    return Catalog(df)
+    """RECO_CATALOG=mock gives the 79-film test catalog of part 3, MOVIES_PATH a parquet file"""
+    return _cached(path or os.getenv("MOVIES_PATH"), os.getenv("RECO_CATALOG"))
+
+
+get_catalog.cache_clear = _cached.cache_clear

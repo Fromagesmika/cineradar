@@ -4,7 +4,7 @@
  "dim": 64,
  "n_films": 62423,
  "n_films_in_graph": 6930,
- "blend_K": 20,
+ "blend_K": 0,
  "val_by_K": {
   "0": {
    "NDCG@10": 0.0681,
@@ -15,36 +15,36 @@
    "GemShare@10": 0.0083
   },
   "5": {
-   "NDCG@10": 0.0682,
-   "Recall@10": 0.086,
-   "Recall@20": 0.1454,
-   "GemRecall@20": 0.0057,
-   "Coverage@10": 0.159,
-   "GemShare@10": 0.0075
+   "NDCG@10": 0.0681,
+   "Recall@10": 0.0859,
+   "Recall@20": 0.1452,
+   "GemRecall@20": 0.0053,
+   "Coverage@10": 0.1573,
+   "GemShare@10": 0.0073
   },
   "10": {
-   "NDCG@10": 0.0682,
-   "Recall@10": 0.0861,
-   "Recall@20": 0.1447,
-   "GemRecall@20": 0.0051,
-   "Coverage@10": 0.1593,
-   "GemShare@10": 0.0071
+   "NDCG@10": 0.068,
+   "Recall@10": 0.0859,
+   "Recall@20": 0.1448,
+   "GemRecall@20": 0.005,
+   "Coverage@10": 0.1569,
+   "GemShare@10": 0.0065
   },
   "20": {
-   "NDCG@10": 0.0683,
-   "Recall@10": 0.0864,
-   "Recall@20": 0.1445,
-   "GemRecall@20": 0.0051,
-   "Coverage@10": 0.1623,
-   "GemShare@10": 0.0083
+   "NDCG@10": 0.0681,
+   "Recall@10": 0.0863,
+   "Recall@20": 0.1441,
+   "GemRecall@20": 0.0043,
+   "Coverage@10": 0.158,
+   "GemShare@10": 0.0092
   },
   "50": {
-   "NDCG@10": 0.0671,
-   "Recall@10": 0.0847,
-   "Recall@20": 0.141,
-   "GemRecall@20": 0.0048,
-   "Coverage@10": 0.1714,
-   "GemShare@10": 0.0279
+   "NDCG@10": 0.066,
+   "Recall@10": 0.0848,
+   "Recall@20": 0.1411,
+   "GemRecall@20": 0.004,
+   "Coverage@10": 0.1691,
+   "GemShare@10": 0.0385
   }
  }
 }

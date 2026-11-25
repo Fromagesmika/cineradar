@@ -66,8 +66,10 @@ def set_memory_provider(p: MemoryProvider) -> None:
 def get_memory_provider() -> MemoryProvider:
     global _provider
     if _provider is None:
-        db = os.getenv("DB_PATH", str(Path(__file__).resolve().parents[2] / "data" / "app.db"))
-        _provider = SQLiteProvider(db) if Path(db).exists() else DEMO_MEMORY
+        from src.service import db as app_db  # base de la partie 4 (data/cineradar.db)
+
+        path = os.getenv("DB_PATH", str(app_db.DB_PATH))
+        _provider = SQLiteProvider(path) if Path(path).exists() else DEMO_MEMORY
     return _provider
 
 
@@ -85,6 +87,7 @@ class EngineConfig:
     w_taste: float = 0.8
     w_memory: float = 0.5
     w_gems: float = 0.35
+    w_quality: float = 0.5
     w_diversity: float = 0.15
     pool_size: int = 300
 
@@ -100,6 +103,12 @@ ABLATIONS = {
 
 
 # --------------------------------------------------------------------------- helpers
+
+
+_GENRE_WORDS = {w for g in CANONICAL_GENRES for w in normalize_text(g, False).split()} | {
+    "film", "films", "movie", "movies", "un", "une", "de", "d", "des", "ce", "soir", "tonight", "a", "an",
+    "comedie", "drame", "horreur", "guerre", "aventure", "fantastique", "polar", "sf", "science", "fiction",
+    "romantique", "policier", "thriller", "documentaire", "famille", "animation", "mystere", "musical"}
 
 
 def _minmax(x: np.ndarray) -> np.ndarray:
@@ -161,6 +170,14 @@ def recommend_detailed(
     msg_disliked = _ids(intent.get("disliked_ids"))
     keywords = [normalize_text(w) for w in intent.get("keywords") or [] if normalize_text(w)]
     query = " ".join([intent.get("query") or "", *keywords]).strip()
+    if intent.get("source") == "rules":
+        # en mode règles, `query` est le message brut (souvent en français, avec « salut », « ce soir »)
+        # alors que les résumés sont en anglais : seuls les mots-clés traduits par les règles sont utiles
+        query = " ".join(keywords)
+    # une demande qui ne contient qu'un genre (« un film d'action ») est déjà couverte par le filtre
+    # de genre : la recherche sur le mot « action » ne ferait que favoriser les résumés qui le contiennent
+    if genres and not set(normalize_text(query, False).split()) - _GENRE_WORDS:
+        query = ""
 
     liked = list(dict.fromkeys(msg_liked + (mem.liked_ids if config.use_memory or config.use_taste else [])))
     disliked = list(dict.fromkeys(msg_disliked + (mem.disliked_ids if config.use_memory or config.use_taste else [])))
@@ -228,20 +245,24 @@ def recommend_detailed(
         cand = pool(rg, slack)
     if len(cand) == 0:
         return []
-    order = np.argsort(-(intent_score[cand] + 1e-3 * cat.df["pop"].to_numpy()[cand]))
-    cand = cand[order[: config.pool_size]]
-    cand_ids = ids[cand]
-
     # ---- goût (partie 2)
-    taste_s = np.zeros(len(cand))
     user_vec = None
     if config.use_taste:
         if liked or disliked:
             user_vec = taste.user_vector(liked[:50], disliked[:50])
         elif mem.embedding is not None:
             user_vec = mem.embedding
-        if user_vec is not None and np.any(user_vec):
-            taste_s = _safe_taste_scores(user_vec, cand_ids)
+    has_taste = user_vec is not None and np.any(user_vec)
+
+    # à intention égale (ex. tous les films d'action), le goût départage les candidats, pas la
+    # popularité : sinon le pool ne contient que les films les plus connus et le curseur n'a plus d'effet
+    tie = 1e-3 * cat.df["pop"].to_numpy()[cand]
+    if has_taste:
+        tie = tie + 0.5 * _minmax(_safe_taste_scores(user_vec, ids[cand]))
+    order = np.argsort(-(intent_score[cand] + tie))
+    cand = cand[order[: config.pool_size]]
+    cand_ids = ids[cand]
+    taste_s = _safe_taste_scores(user_vec, cand_ids) if has_taste else np.zeros(len(cand))
 
     # ---- mémoire : affinités de genres, films refusés, lassitude
     mem_s = np.zeros(len(cand))
@@ -266,8 +287,16 @@ def recommend_detailed(
 
     # ---- pépites : c=1 pousse la longue traîne, c=0 pousse les classiques, c=0.5 neutre
     pop = cat.df["pop"].to_numpy()[cand]
+    quality = cat.df["quality"].to_numpy()[cand]
     gem_adj = (2 * c - 1) * (0.5 - pop) * 2 if config.use_gems else np.zeros(len(cand))
+    if config.use_gems:
+        # une pépite doit être bien notée : le bonus « peu connu » est pondéré par la qualité,
+        # et la qualité compte d'autant plus que l'utilisateur est cinéphile
+        gem_adj = np.where(gem_adj > 0, gem_adj * 2 * quality, gem_adj)
     final = rel + config.w_gems * gem_adj + 1e-3 * pop
+    if config.use_gems:
+        # films mal notés reculent, films très bien notés avancent (note moyenne MovieLens)
+        final = final + config.w_quality * (quality - 0.5)
 
     # ---- sélection avec diversification (MMR léger sur le contenu)
     top = np.argsort(-final)[: max(5 * k, 50)]
@@ -276,16 +305,16 @@ def recommend_detailed(
         E = cat.content_emb[cand[top]]
         S = E @ E.T
         S = np.asarray(S.todense()) if hasattr(S, "todense") else np.asarray(S)
-        remaining = list(range(len(top)))
-        while remaining and len(chosen) < k:
-            best, best_val = None, -1e9
-            for j in remaining:
-                pen = max((S[j, top.tolist().index(t)] for t in chosen), default=0.0)
-                v = final[top[j]] - config.w_diversity * pen
-                if v > best_val:
-                    best, best_val = j, v
+        # même règle qu'avant (pénalité = similarité max avec un film déjà choisi), en vectorisé
+        base = final[top].astype(float)
+        penalty = np.zeros(len(top))
+        free = np.ones(len(top), dtype=bool)
+        while free.any() and len(chosen) < k:
+            values = np.where(free, base - config.w_diversity * penalty, -np.inf)
+            best = int(np.argmax(values))
             chosen.append(top[best])
-            remaining.remove(best)
+            free[best] = False
+            penalty = np.maximum(penalty, S[:, best])
     else:
         chosen = list(top[:k])
 

@@ -6,7 +6,7 @@ Transforme un message en recommandations personnalisées et en réponse « d'ami
 ## Lancer en 1 minute
 
 ```bash
-pip install numpy pandas scikit-learn pytest      # pyarrow en plus quand movies.parquet arrive
+pip install -r requirements.txt
 python -m pytest -q                               # 15 tests, dont le critère « terminé »
 python scripts/demo_chat.py --profils             # 2 profils, même demande « un film d'action »
 python scripts/demo_chat.py                       # chat interactif
@@ -111,7 +111,7 @@ Garde-fous :
 | + mémoire | 0.863 | 0.235 | 0.962 | 0.227 |
 | + pépites (complet) | 0.887 | 0.297 | 0.987 | 0.221 |
 
-⚠️ Ce banc ne sert qu'à vérifier la cohérence du système, ce ne sont **pas** les chiffres du rapport. Les profils synthétiques
+Ce banc ne sert qu'à vérifier la cohérence du système, ce ne sont **pas** les chiffres du rapport. Les profils synthétiques
 sont construits par similarité de contenu, ce qui avantage les variantes à base de contenu. Sur ce petit banc, « + descriptions »
 change l'ordre des listes mais pas le Recall. L'apport de la mémoire (refus, lassitude) ne se voit pas non plus, puisque ces profils
 n'ont aucun historique de clics. Les vrais chiffres viendront du harnais de la partie 1 (ReDial), branché automatiquement.

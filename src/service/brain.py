@@ -1,4 +1,5 @@
 import importlib
+import json
 import re
 
 import numpy as np
@@ -250,7 +251,7 @@ def fallback_reply(message: str, user: dict, recos: list[dict], extracted: dict 
         if film is None:
             continue
         year = f" ({film['year']})" if film["year"] else ""
-        gem = (" 💎 pépite" if fr else " 💎 hidden gem") if film["hidden_gem"] else ""
+        gem = (" (pépite)" if fr else " (hidden gem)") if film["hidden_gem"] else ""
         because = catalog.title(reco.get("because_movie_id"))
         why = (f" parce que tu as aimé {because}" if fr else f" because you liked {because}") if because else ""
         lines.append(f"- **{film['title']}**{year}{gem}{why}")
@@ -263,39 +264,136 @@ def fallback_reply(message: str, user: dict, recos: list[dict], extracted: dict 
     return "\n".join(lines)
 
 
-def _part3(module: str, name: str):
+# ---------------------------------------------------------------- part 3 (src/llm/agent.py, src/reco/engine.py)
+# When part 3 is there, it does the understanding, ranking and reply. This file then only
+# translates between its format and the database. Without it, the simple version above is used
+
+INTENT_KEYS = {"avoid_genres": "excluded_genres", "min_year": "year_min", "max_year": "year_max"}
+
+
+def _part3():
     try:
-        return getattr(importlib.import_module(module), name, None)
+        return importlib.import_module("src.llm.agent"), importlib.import_module("src.reco.engine")
     except ImportError:
         return None
 
 
+def _use_database(conn=None):
+    """Part 3 reads the user's memory (clicks, questionnaire, facts) from this database"""
+    from src.reco.memory import SQLiteProvider
+
+    path = conn.execute("PRAGMA database_list").fetchone()[2] if conn is not None else str(db.DB_PATH)
+    _part3()[1].set_memory_provider(SQLiteProvider(path))
+
+
+def warm_up():
+    """Load the catalogs and taste vectors once at start-up, so the first chat message is fast"""
+    catalog.load()
+    taste.is_mock()
+    if _part3():
+        from src.reco.catalog import get_catalog
+        get_catalog()
+
+
+def to_engine_intent(intent: dict | None) -> dict:
+    """Request in this file's format -> part 3 format"""
+    return {INTENT_KEYS.get(k, k): v for k, v in (intent or {}).items()}
+
+
+def from_agent(intent: dict) -> dict:
+    """Part 3 extraction -> what the database stores (same keys as fallback_extract)"""
+    genres_liked, genres_avoided, facts = [], [], {}
+    for fact in intent.get("profile_facts", []):
+        if fact["key"] == "genre_like":
+            genres_liked.append(fact["value"])
+        elif fact["key"] == "genre_dislike":
+            genres_avoided.append(fact["value"])
+        else:
+            facts[fact["key"]] = fact["value"]
+    return {
+        "intent": {"genres": intent.get("genres", []), "avoid_genres": intent.get("excluded_genres", []),
+                   "reference_ids": intent.get("reference_ids", []), "min_year": intent.get("year_min"),
+                   "max_year": intent.get("year_max"), "cinephile_shift": intent.get("cinephile_shift", 0.0)},
+        "likes": intent.get("liked_ids", []),
+        "dislikes": intent.get("disliked_ids", []),
+        "seen": intent.get("seen_ids", []),
+        "genres_liked": genres_liked,
+        "genres_avoided": genres_avoided,
+        "facts": facts,
+        "agent_intent": intent,
+    }
+
+
+def _agent_history(conn, conversation_id: int, limit: int = 20) -> list[dict]:
+    """Chat history in part 3 format: assistant turns carry the request and the films shown,
+    so that "another one" or "more recent" refine the previous request"""
+    rows = conn.execute(
+        "SELECT role, content, extracted_json, recommended_ids FROM messages WHERE conversation_id = ? "
+        "ORDER BY id DESC LIMIT ?", (conversation_id, limit)).fetchall()
+    out, last_intent = [], None
+    for row in reversed(rows):
+        if row["role"] == "user":
+            extracted = json.loads(row["extracted_json"] or "{}")
+            last_intent = extracted.get("agent_intent")
+            out.append({"role": "user", "content": row["content"]})
+        else:
+            recos = json.loads(row["recommended_ids"] or "[]")
+            out.append({"role": "assistant", "content": row["content"], "intent": last_intent or {}, "recos": recos})
+    return out
+
+
 def extract(message: str, history=None) -> dict:
-    custom = _part3("src.llm.agent", "extract")
-    return custom(message, history or []) if custom else fallback_extract(message, history)
+    part3 = _part3()
+    return from_agent(part3[0].extract(message, history or [])) if part3 else fallback_extract(message, history)
 
 
 def recommend(user_id: int, intent: dict | None = None, k: int = 10, cinephile: float | None = None) -> list[dict]:
-    custom = _part3("src.reco.engine", "recommend")
-    return custom(user_id, intent or {}, k, cinephile) if custom else fallback_recommend(user_id, intent, k, cinephile)
+    part3 = _part3()
+    if part3 is None:
+        return fallback_recommend(user_id, intent, k, cinephile)
+    _use_database()
+    return part3[1].recommend(user_id, to_engine_intent(intent), k, cinephile)
 
 
 def reply(message: str, user: dict, recos: list[dict], extracted: dict | None = None) -> str:
-    custom = _part3("src.llm.agent", "reply")
-    return custom(message, user, recos) if custom else fallback_reply(message, user, recos, extracted)
+    part3 = _part3()
+    return part3[0].reply(message, user, recos) if part3 else fallback_reply(message, user, recos, extracted)
 
 
 def chat_turn(conn, user_id: int, message: str, conversation_id: int | None = None, k: int = 10) -> dict:
     profile.ensure_user(conn, user_id)
     if conversation_id is None:
         conversation_id = profile.start_conversation(conn, user_id)
-    past = profile.history(conn, conversation_id)
-    extracted = extract(message, past)
+    part3 = _part3()
+    if part3 is None:
+        return _fallback_turn(conn, user_id, message, conversation_id, k)
+
+    _use_database(conn)
+    turn = part3[0].chat_turn(user_id, message, _agent_history(conn, conversation_id), cinephile=None, k=k)
+    extracted = from_agent(turn["intent"])
+    recos = turn["recos"]
     profile.add_message(conn, conversation_id, "user", message, extracted=extracted)
     profile.apply_extraction(conn, user_id, extracted, conversation_id)
-    recos = recommend(user_id, extracted.get("intent", {}), k)
+    for movie_id in extracted["seen"]:
+        profile.log_interaction(conn, user_id, movie_id, "seen", "chat", conversation_id=conversation_id, commit=False)
+    for reco in recos[:3]:  # the 3 films named in the reply; shown films move back if ignored
+        profile.log_interaction(conn, user_id, reco["movie_id"], "suggested", "chat",
+                                conversation_id=conversation_id, commit=False)
+    conn.commit()
+    profile.add_message(conn, conversation_id, "assistant", turn["reply"],
+                        recommended_ids=[r["movie_id"] for r in recos])
+    return {"conversation_id": conversation_id, "reply": turn["reply"], "recommendations": recos,
+            "extracted": extracted}
+
+
+def _fallback_turn(conn, user_id: int, message: str, conversation_id: int, k: int) -> dict:
+    past = profile.history(conn, conversation_id)
+    extracted = fallback_extract(message, past)
+    profile.add_message(conn, conversation_id, "user", message, extracted=extracted)
+    profile.apply_extraction(conn, user_id, extracted, conversation_id)
+    recos = fallback_recommend(user_id, extracted.get("intent", {}), k)
     user = profile.get_profile(conn, user_id)
-    answer = reply(message, user, recos, extracted)
+    answer = fallback_reply(message, user, recos, extracted)
     for reco in recos[:3]:
         profile.log_interaction(conn, user_id, reco["movie_id"], "suggested", "chat",
                                 conversation_id=conversation_id, commit=False)
