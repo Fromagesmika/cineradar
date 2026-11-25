@@ -120,6 +120,8 @@ def card(movie_id: int) -> dict | None:
         "genres": row["genres"],
         "overview": row["overview"],
         "poster_url": row["poster_url"],
+        "directors": row["directors"],
+        "mean_rating": None if pd.isna(row["mean_rating"]) else round(float(row["mean_rating"]), 1),
         "hidden_gem": not bool(row["popular"]),
     }
 

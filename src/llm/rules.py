@@ -63,8 +63,12 @@ KEYWORD_LEXICON = {
     "melancolique": "melancholic", "amitie": "friendship", "culte": "cult",
 }
 
-GEM_WORDS = ["pepite", "pepites", "meconnu", "meconnus", "peu connu", "pointu", "pointus", "inde",
-             "independant", "film d auteur", "underground", "rare", "original", "sortir des sentiers"]
+GEM_WORDS = ["pepite", "pepites", "meconnu", "meconnus", "meconnue", "meconnues", "pointu", "pointus", "inde",
+             "independant", "film d auteur", "underground", "rare", "original", "sortir des sentiers",
+             "sous cote", "sous cotes", "sous cotee", "sous cotees", "hidden gem", "hidden gems", "lesser known", "less known", "obscure",
+             "underrated"]
+# "moins connu" and "peu connu" must win over "connu", which alone asks for well-known films
+GEM_WORDS += [f"{a} connu{e}" for a in ("peu", "moins", "pas tres", "pas trop") for e in ("", "e", "s", "es")]
 MAINSTREAM_WORDS = ["connu", "connus", "grand public", "blockbuster", "blockbusters", "populaire",
                     "populaires", "incontournable", "incontournables", "succes", "valeur sure"]
 NEG_WORDS = {"pas", "sans", "evite", "eviter", "evites", "deteste", "jamais", "rien", "marre", "supporte", "aucun"}

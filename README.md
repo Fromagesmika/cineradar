@@ -18,16 +18,17 @@ You need Python 3.10 or newer. The raw data and the trained model are not needed
    # Windows: .venv\Scripts\activate    |    Mac/Linux: source .venv/bin/activate
    pip install -r requirements.txt
    ```
-2. Start the API. The first start takes about 20 seconds while it loads the 62,000 films
+2. Start the demo. On Windows, double-click `demo.bat`. On Mac or Linux, run `bash demo.sh`. The script starts the API, waits about 20 seconds while it loads the 62,000 films, starts the web app and opens http://127.0.0.1:8501 in your browser. Close the two windows (or press Ctrl+C on Mac and Linux) to stop it
+
+   To start the two parts by hand instead, run each command in its own terminal, with the environment activated
    ```bash
    uvicorn api.main:app
-   ```
-   The endpoints can be tested at http://localhost:8000/docs
-3. Start the web app in a second terminal, with the same environment activated
-   ```bash
    streamlit run app/streamlit_app.py
    ```
-   Open http://localhost:8501, pick a nickname, answer the questionnaire and start chatting. You can write in French or in English, for example "un polar sombre et peu connu" or "something like Blade Runner but more recent"
+   The API endpoints can be tested at http://127.0.0.1:8000/docs
+3. Pick a nickname, answer the questionnaire and start chatting. You can write in French or in English, for example "un film comme Heat, mais moins connu" or "something like Blade Runner but more recent". Under each film, the Liked, Disliked, Seen and Not for me buttons change what comes next, and the slider in the sidebar moves from mainstream picks to hidden gems
+
+On Windows, use 127.0.0.1 rather than localhost: localhost first tries IPv6 and every call then waits 2 seconds
 
 No API key is needed. Without one, the chat reads messages with rules and answers with sentence templates. With an `ANTHROPIC_API_KEY` (or an `OPENAI_API_KEY`, see `src/llm/client.py`) set before starting the API, a language model reads the messages and writes the answers. It may only talk about the films the ranking gave it, and the code falls back to the rules if it names another film or if the call fails
 
@@ -143,7 +144,7 @@ More detail on the chat brain (request format, memory, score formula) is in `REA
 ```
 cineradar/
 ├── api/            FastAPI backend
-├── app/            Streamlit web app
+├── app/            Streamlit web app (theme in .streamlit/config.toml)
 ├── artifacts/      film catalog and film vectors used by the app (committed)
 ├── data/           raw and processed data, SQLite database (not in git)
 ├── models/         trained models (not in git)
@@ -157,7 +158,9 @@ cineradar/
 │   ├── llm/        message reading and reply (rules or language model)
 │   ├── reco/       candidates, ranking, hidden gems, user memory
 │   └── service/    database, profile, catalog, chat turn
-└── tests/          54 tests
+├── tests/          55 tests
+├── demo.bat        one-click demo launcher for Windows
+└── demo.sh         the same for Mac and Linux
 ```
 
 ## Tests

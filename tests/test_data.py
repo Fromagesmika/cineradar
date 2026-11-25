@@ -35,3 +35,10 @@ def test_case_profile_is_passed_to_the_recommender():
     case = {"request": "", "liked": [1, 2], "disliked": [3], "targets": [4]}
     intent = case_intent(case, lambda text: {})
     assert intent["liked_ids"] == [1, 2] and intent["disliked_ids"] == [3]
+
+
+def test_less_known_asks_for_gems():
+    from src.llm.rules import extract_rules
+    assert extract_rules("Un film comme Heat, mais moins connu")["cinephile_shift"] > 0
+    assert extract_rules("une pépite sous-cotée")["cinephile_shift"] > 0
+    assert extract_rules("un film très connu")["cinephile_shift"] < 0
