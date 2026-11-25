@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 # CinéRadar launcher for macOS and Linux: bash start.sh, then Ctrl+C to stop everything
 cd "$(dirname "$0")"
-PY=python3
-[ -x .venv/bin/python ] && PY=.venv/bin/python
-$PY -c "import fastapi, streamlit, uvicorn" 2>/dev/null || $PY -m pip install -r requirements.txt || exit 1
+READY='import api.main, streamlit'
+if [ -x .venv/bin/python ] && .venv/bin/python -c "$READY" 2>/dev/null; then
+    PY=.venv/bin/python
+elif [ -z "$CINERADAR_FRESH" ] && python3 -c "$READY" 2>/dev/null; then
+    PY=python3
+else
+    # First run: create the project venv in .venv and install the requirements into it
+    command -v python3 >/dev/null || { echo "Python 3.10 or newer was not found, install it and run start.sh again"; exit 1; }
+    [ -x .venv/bin/python ] || { echo "First run: creating the Python environment in .venv..."; python3 -m venv .venv || exit 1; }
+    PY=.venv/bin/python
+    echo "Installing the requirements, 2 to 3 minutes the first time only..."
+    $PY -m pip install --disable-pip-version-check -r requirements.txt || { echo "The install failed, check the internet connection and run start.sh again"; exit 1; }
+fi
 
 $PY -m uvicorn api.main:app --host 127.0.0.1 --port 8000 &
 API=$!

@@ -10,6 +10,8 @@ RecSys Startup Sprint, Group 18: Théodore BRICOUT, Benoît QUARANTA, Michaël L
 
 You need Python 3.10 or newer and an internet connection for the install. You do not need the raw data, the trained model or an API key: the film catalog and the film vectors are committed in `artifacts/`
 
+**Shortest way**: get the code (`git clone` or unzip the ZIP), then double-click `start.bat` on Windows, or run `bash start.sh` on Mac or Linux. On the first run, the script creates a Python environment in `.venv` and installs the requirements into it (about 2 minutes), then starts everything and opens the app. The steps below do the same by hand
+
 1. Get the code and install the dependencies (1 to 3 minutes). If you start from the ZIP, unzip it and start from `cd cineradar`
 
    Windows, in PowerShell or cmd
@@ -174,7 +176,7 @@ cineradar/
 │   ├── reco/       candidates, ranking, hidden gems, user memory
 │   └── service/    database, profile, catalog, chat turn
 ├── tests/          55 tests
-├── start.bat       starts the API and the app on Windows
+├── start.bat       installs on the first run, then starts the API and the app (Windows)
 └── start.sh        the same for Mac and Linux
 ```
 

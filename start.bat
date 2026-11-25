@@ -4,26 +4,40 @@ rem It starts the API and the app in two windows, then opens the browser
 rem Close the two windows to stop everything
 cd /d "%~dp0"
 
-rem Use the first Python that can already import the API (the project venv, then the global one)
+rem 1. Use a Python that can already run the app: the project venv, then the global one
+rem    (set CINERADAR_FRESH=1 to ignore the global Python and always use .venv)
 set PY=
-set READY=
 if exist ".venv\Scripts\python.exe" .venv\Scripts\python.exe -c "import api.main, streamlit" 2>nul && set PY=.venv\Scripts\python.exe
-if not defined PY python -c "import api.main, streamlit" 2>nul && set PY=python
-if defined PY set READY=1
+if not defined PY if not defined CINERADAR_FRESH python -c "import api.main, streamlit" 2>nul && set PY=python
+if defined PY goto run
 
-rem Nothing ready yet: install into the project venv if there is one, else into the global Python
-if not defined PY set PY=python
-if not defined READY if exist ".venv\Scripts\python.exe" set PY=.venv\Scripts\python.exe
-if not defined READY (
-    echo Installing the requirements, this only happens the first time and takes a few minutes...
-    %PY% -m pip install -r requirements.txt
-    if errorlevel 1 (
-        echo Install failed. Check that Python 3.10 or newer is installed and on the PATH
-        pause
-        exit /b 1
-    )
+rem 2. First run: create the project venv in .venv and install the requirements into it
+set BASE=python
+python --version >nul 2>&1 || set BASE=py -3
+%BASE% --version >nul 2>&1
+if errorlevel 1 goto nopython
+if not exist ".venv\Scripts\python.exe" (
+    echo First run: creating the Python environment in .venv...
+    %BASE% -m venv .venv
 )
+if not exist ".venv\Scripts\python.exe" goto nopython
+set PY=.venv\Scripts\python.exe
+echo Installing the requirements, 2 to 3 minutes the first time only...
+%PY% -m pip install --disable-pip-version-check -r requirements.txt
+if errorlevel 1 goto installfail
+goto run
 
+:nopython
+echo Python 3.10 or newer was not found. Install it from python.org, tick "Add python.exe to PATH", then run start.bat again
+pause
+exit /b 1
+
+:installfail
+echo The install failed, see the messages above. Check the internet connection, then run start.bat again
+pause
+exit /b 1
+
+:run
 echo Starting the API on http://127.0.0.1:8000
 start "CineRadar API" %PY% -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 
