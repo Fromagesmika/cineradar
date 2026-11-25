@@ -16,14 +16,33 @@ st.set_page_config(page_title="CinéRadar", page_icon=":material/movie:", layout
 
 st.markdown("""
 <style>
-.block-container {padding-top: 2.2rem; max-width: 1400px}
-.cr-frame {position: relative}
-.cr-poster {width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 8px; display: block}
+.stApp {background: radial-gradient(1100px 520px at 75% -8%, rgba(124, 58, 237, .20), transparent 62%),
+                    radial-gradient(900px 500px at -10% 110%, rgba(236, 72, 153, .07), transparent 60%), #0e0e15}
+[data-testid="stSidebar"] {background: linear-gradient(180deg, #171624, #101018); border-right: 1px solid rgba(139, 92, 246, .15)}
+.block-container {padding-top: 3.6rem; max-width: 1400px}
+[class*="st-key-card-"] {background: linear-gradient(180deg, #1c1a2b, #13131c); border-color: rgba(139, 92, 246, .16) !important;
+                         box-shadow: 0 6px 18px rgba(0, 0, 0, .35); transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease}
+[class*="st-key-card-"]:hover {transform: translateY(-4px); border-color: rgba(139, 92, 246, .55) !important;
+                               box-shadow: 0 16px 34px rgba(0, 0, 0, .55), 0 0 22px rgba(139, 92, 246, .18)}
+[class*="st-key-card-"]:hover .cr-poster {transform: scale(1.04)}
+.cr-brand {font-weight: 800; background: linear-gradient(90deg, #ddd6fe, #a78bfa 45%, #f0abfc); -webkit-background-clip: text;
+           background-clip: text; color: transparent}
+.cr-eyebrow {font-size: .72rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #a78bfa; margin-bottom: -.4rem}
+.cr-scale {display: flex; justify-content: space-between; font-size: .72rem; opacity: .65; margin-top: -.6rem}
+.cr-level {font-size: .8rem; color: #c4b5fd; margin: .2rem 0 1rem}
+.cr-bar {display: grid; grid-template-columns: 110px 1fr 34px; align-items: center; gap: 10px; font-size: .85rem; margin: 6px 0; max-width: 620px}
+.cr-bar > div {height: 8px; border-radius: 999px; background: rgba(255, 255, 255, .06); overflow: hidden}
+.cr-bar > div > span {display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #7c3aed, #e879f9)}
+.cr-strip {display: grid; grid-template-columns: repeat(8, 1fr); gap: 12px; margin: 2rem 0 1rem; opacity: .9;
+           -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent); mask-image: linear-gradient(180deg, #000 55%, transparent)}
+.cr-strip img {width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 8px; box-shadow: 0 10px 24px rgba(0, 0, 0, .5)}
+.cr-frame {position: relative; overflow: hidden; border-radius: 8px; box-shadow: 0 8px 20px rgba(0, 0, 0, .45)}
+.cr-poster {width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 8px; display: block; transition: transform .35s ease}
 .cr-noposter {background: linear-gradient(160deg, #2b2440, #15151f); display: flex; align-items: center;
               justify-content: center; text-align: center; padding: 10px; font-weight: 600}
 .cr-gem {position: absolute; top: 8px; left: 8px; background: #7c3aed; color: #fff; font-size: .68rem;
          font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
-         box-shadow: 0 2px 6px rgba(0,0,0,.4)}
+         box-shadow: 0 2px 10px rgba(124, 58, 237, .6)}
 .cr-title {font-weight: 600; line-height: 1.25; margin: .55rem 0 .2rem; min-height: 2.5em; display: -webkit-box;
            -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden}
 .cr-meta {font-size: .8rem; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis}
@@ -32,7 +51,7 @@ st.markdown("""
 .cr-shelf {display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 14px; margin: .5rem 0 1.5rem}
 .cr-shelf .cr-title {font-size: .8rem; min-height: 0}
 [data-testid="stButtonGroup"] button {padding: 1px 9px; min-height: 0; font-size: .75rem}
-.cr-hero h1 {font-size: 3rem; margin-bottom: 0}
+.cr-hero h1 {font-size: 3.6rem; margin-bottom: 0; line-height: 1.1}
 .cr-hero p {font-size: 1.15rem; opacity: .8}
 </style>
 """, unsafe_allow_html=True)
@@ -111,7 +130,7 @@ def opinion(film: dict, user_id: int, key: str, conversation_id=None):
 
 
 def film_card(film: dict, user_id: int, key: str, conversation_id=None):
-    with st.container(border=True):
+    with st.container(border=True, key=f"card-{key}-{film['movie_id']}"):
         html = poster(film) + f'<div class="cr-title">{escape(label(film))}</div><div class="cr-meta">{escape(meta(film))}</div>'
         if film.get("directors"):
             html += f'<div class="cr-meta">by {escape(film["directors"].split(",")[0])}</div>'
@@ -138,13 +157,33 @@ def shelf(films: list[dict]):
     st.markdown(f'<div class="cr-shelf">{items}</div>', unsafe_allow_html=True)
 
 
+def header(eyebrow: str, title: str, caption: str):
+    st.markdown(f'<div class="cr-eyebrow">{eyebrow}</div>', unsafe_allow_html=True)
+    st.title(title)
+    st.caption(caption)
+
+
+def level_text(level: float) -> str:
+    if level < 0.3:
+        return "Mostly well-known crowd pleasers"
+    if level < 0.6:
+        return "A mix of classics and lesser-known films"
+    if level < 0.85:
+        return "Mostly lesser-known films that people loved"
+    return "Films almost nobody has seen, but that people loved"
+
+
 # Pages before sign-in
 
 def sign_in():
-    st.markdown('<div class="cr-hero"><h1>CinéRadar</h1>'
+    st.markdown('<div class="cr-hero"><h1><span class="cr-brand">CinéRadar</span></h1>'
                 "<p>Your film-loving friend who finds the hidden gems you would never find alone</p></div>",
                 unsafe_allow_html=True)
-    st.write("")
+    films = [f for f in (static("/movies/popular", limit=40) or []) if f.get("poster_url")][:8]
+    if films:
+        st.markdown('<div class="cr-strip">' + "".join(f'<img src="{escape(f["poster_url"])}" alt="">' for f in films)
+                    + "</div>", unsafe_allow_html=True)
+        st.caption("Everybody has seen these. CinéRadar looks for the films you would love next and nobody told you about")
     new, existing = st.columns(2, gap="large")
     with new.container(border=True):
         st.markdown("#### New here?")
@@ -270,8 +309,8 @@ def chat_page():
 
 def for_you_page():
     user = st.session_state.user
-    st.title("Picked for you")
-    st.caption("From your profile and everything you told me. Move the slider in the sidebar to get more hidden gems")
+    header("Your picks", "Picked for you",
+           "From your profile and everything you told me. Move the slider in the sidebar to get more hidden gems")
     left, right = st.columns([4, 1])
     genre = left.multiselect("Filter by genre", static("/genres") or [], key="for_you_genres")
     k = right.number_input("How many", 5, 30, 10, 5)
@@ -283,8 +322,7 @@ def for_you_page():
 
 def profile_page():
     user = st.session_state.user
-    st.title("My profile")
-    st.caption("Everything I know about your taste. It grows with each message and each click")
+    header("Your taste", "My profile", "Everything I know about your taste. It grows with each message and each click")
     columns = st.columns(4)
     columns[0].metric("Interactions", user["n_interactions"])
     columns[1].metric("Films liked", len(user["liked_ids"]))
@@ -297,6 +335,17 @@ def profile_page():
     with right:
         st.markdown("**Genres you avoid**")
         st.markdown(" ".join(f":gray-badge[{g}]" for g in user["genres_avoided"]) or "None yet")
+    liked = user.get("liked", [])
+    counts = {}
+    for film in liked:
+        for genre in (film.get("genres") or "").split(","):
+            if genre.strip():
+                counts[genre.strip()] = counts.get(genre.strip(), 0) + 1
+    if counts:
+        st.markdown("#### The genres of the films you liked")
+        top = sorted(counts.items(), key=lambda item: -item[1])[:6]
+        st.markdown("".join(f'<div class="cr-bar">{escape(g)}<div><span style="width:{100 * n / len(liked):.0f}%"></span></div>'
+                            f"{n}</div>" for g, n in top), unsafe_allow_html=True)
     st.markdown("#### Films you liked")
     if user.get("liked"):
         shelf(user["liked"])
@@ -325,12 +374,14 @@ def new_conversation():
 
 def sidebar(user: dict):
     with st.sidebar:
-        st.markdown("## CinéRadar")
+        st.markdown('<h2 style="margin-bottom:0"><span class="cr-brand">CinéRadar</span></h2>', unsafe_allow_html=True)
         st.caption(f"Signed in as **{user.get('pseudo') or 'User'}** (user ID {user['user_id']})")
         if user["onboarding_done"]:
-            st.slider("Mainstream ↔ Hidden gems", 0.0, 1.0, float(user["cinephile_level"]), 0.05,
+            st.slider("What kind of films?", 0.0, 1.0, float(user["cinephile_level"]), 0.05,
                       key="level", on_change=set_level,
                       help="Move right and I will suggest films almost nobody has seen, but that people loved")
+            st.markdown('<div class="cr-scale"><span>Mainstream</span><span>Hidden gems</span></div>'
+                        f'<div class="cr-level">{level_text(user["cinephile_level"])}</div>', unsafe_allow_html=True)
             st.button("New conversation", on_click=new_conversation, use_container_width=True)
         if st.button("Sign out", use_container_width=True):
             st.session_state.clear()
