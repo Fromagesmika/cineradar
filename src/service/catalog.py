@@ -119,7 +119,7 @@ def card(movie_id: int) -> dict | None:
         "year": None if pd.isna(row["year"]) else int(row["year"]),
         "genres": row["genres"],
         "overview": row["overview"],
-        "poster_url": row["poster_url"],
+        "poster_url": None if pd.isna(row["poster_url"]) else row["poster_url"],  # NaN breaks the JSON reply
         "directors": row["directors"],
         "mean_rating": None if pd.isna(row["mean_rating"]) else round(float(row["mean_rating"]), 1),
         "hidden_gem": not bool(row["popular"]),

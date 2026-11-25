@@ -102,17 +102,17 @@ NLGCL beats the popularity baseline by 50% on NDCG@10, and the vector the app co
 
 300 dialogues from 75 test seekers who are not used anywhere else. The system reads what the seeker wrote before the first suggestion, together with the films they said they liked, and must find the films the recommender suggested (950 films, about 3 per dialogue, among 18,430 candidates). Jaccard@10 measures how much the top 10s of two different seekers overlap when both ask for "an action film": lower means more personal
 
-| System | Recall@10 | Recall@50 | NDCG@10 | GemShare@10 | Jaccard@10 |
-|---|---|---|---|---|---|
-| Random | 0.0000 | 0.0029 | 0.0000 | 0.3550 | 0.0000 |
-| Most popular | 0.0135 | 0.0574 | 0.0113 | 0.0000 | 1.0000 |
-| Taste model alone | 0.0341 | 0.1181 | 0.0280 | 0.0910 | 0.0683 |
-| Request only, no taste | 0.0361 | 0.1070 | 0.0256 | 0.0280 | 1.0000 |
-| + taste vectors | 0.0350 | 0.1132 | 0.0244 | 0.1703 | 0.1322 |
-| + film descriptions | 0.0448 | 0.1483 | 0.0339 | 0.1393 | 0.1322 |
-| + memory | 0.0448 | 0.1483 | 0.0339 | 0.1393 | 0.1322 |
-| + hidden-gem re-ranking (full system, slider in the middle) | 0.0486 | 0.1488 | 0.0373 | 0.0883 | 0.1671 |
-| Full system, slider on hidden gems (0.9) | 0.0252 | 0.0808 | 0.0171 | 0.5947 | 0.1595 |
+| System | Recall@10 | Recall@20 | Recall@50 | NDCG@10 | GemShare@10 | Jaccard@10 |
+|---|---|---|---|---|---|---|
+| Random | 0.0000 | 0.0000 | 0.0029 | 0.0000 | 0.3550 | 0.0000 |
+| Most popular | 0.0135 | 0.0218 | 0.0574 | 0.0113 | 0.0000 | 1.0000 |
+| Taste model alone | 0.0341 | 0.0597 | 0.1181 | 0.0280 | 0.0910 | 0.0683 |
+| Request only, no taste | 0.0361 | 0.0597 | 0.1070 | 0.0256 | 0.0280 | 1.0000 |
+| + taste vectors | 0.0350 | 0.0594 | 0.1132 | 0.0244 | 0.1703 | 0.1322 |
+| + film descriptions | 0.0448 | 0.0842 | 0.1483 | 0.0339 | 0.1393 | 0.1322 |
+| + memory | 0.0448 | 0.0842 | 0.1483 | 0.0339 | 0.1393 | 0.1322 |
+| + hidden-gem re-ranking (full system, slider in the middle) | 0.0486 | 0.0898 | 0.1488 | 0.0373 | 0.0883 | 0.1671 |
+| Full system, slider on hidden gems (0.9) | 0.0252 | 0.0399 | 0.0808 | 0.0171 | 0.5947 | 0.1595 |
 
 The full system scores three times the popularity baseline on NDCG@10 (0.037 against 0.011), and two users asking the same thing share about one film in six. The memory row equals the row above because the test seekers have no click history; the tests check its effect instead (`test_click_changes_next_recommendations`). With the slider on hidden gems, 59% of the top 10 are hidden gems and NDCG@10 (0.017) stays above the popularity baseline: the user chooses how much accuracy to trade for discovery. All metrics are in `results/redial_results.md`
 
