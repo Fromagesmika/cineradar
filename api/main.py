@@ -33,27 +33,27 @@ class Onboarding(BaseModel):
     disliked_ids: list[int] = Field(default_factory=list)
     genres_liked: list[str] = Field(default_factory=list)
     genres_avoided: list[str] = Field(default_factory=list)
-    cinephile: float = 0.5
+    cinephile: float = Field(0.5, ge=0, le=1)
 
 
 class Interaction(BaseModel):
     user_id: int
     movie_id: int
     type: str
-    value: float | None = None
+    value: float | None = Field(None, ge=0, le=5)  # a MovieLens rating, from 0.5 to 5 stars
     source: str = "click"
     conversation_id: int | None = None
 
 
 class ChatMessage(BaseModel):
     user_id: int
-    message: str
+    message: str = Field(max_length=2000)
     conversation_id: int | None = None
-    k: int = 10
+    k: int = Field(10, ge=1, le=50)
 
 
 class Settings(BaseModel):
-    cinephile: float
+    cinephile: float = Field(ge=0, le=1)  # 0 = mainstream, 1 = hidden gems
 
 
 def with_cards(recos: list[dict]) -> list[dict]:
@@ -66,6 +66,18 @@ def with_cards(recos: list[dict]) -> list[dict]:
         out.append({**film, "score": reco.get("score"), "because_movie_id": because,
                     "because_title": catalog.title(because)})
     return out
+
+
+def require_user(conn, user_id: int):
+    # an unknown id is an error: creating the user on the fly hid typos and made ids jump
+    if not profile.user_exists(conn, user_id):
+        raise HTTPException(status_code=404, detail=f"unknown user {user_id}, create one with POST /users")
+
+
+def require_films(movie_ids) -> None:
+    unknown = [int(m) for m in movie_ids if catalog.card(int(m)) is None]
+    if unknown:
+        raise HTTPException(status_code=404, detail=f"unknown film id(s): {unknown}")
 
 
 def require_profile(conn, user_id: int) -> dict:
@@ -114,7 +126,9 @@ def create_user(user: NewUser):
 def onboarding(answers: Onboarding):
     if not answers.liked_ids:
         raise HTTPException(status_code=422, detail="pick at least one film you liked")
+    require_films(answers.liked_ids + answers.disliked_ids)
     with session() as conn:
+        require_user(conn, answers.user_id)
         profile.save_onboarding(conn, answers.user_id, answers.liked_ids, answers.disliked_ids,
                                 answers.genres_liked, answers.genres_avoided, answers.cinephile)
         return profile.get_profile(conn, answers.user_id)
@@ -142,7 +156,7 @@ def update_settings(user_id: int, settings: Settings):
 def recommend(user_id: int, k: int = Query(10, ge=1, le=50), alpha: float | None = Query(None, ge=0, le=1),
               genre: list[str] | None = Query(None)):
     with session() as conn:
-        profile.ensure_user(conn, user_id)
+        require_user(conn, user_id)
     recos = brain.recommend(user_id, {"genres": genre or []}, k, alpha)
     return {"user_id": user_id, "alpha": alpha, "recommendations": with_cards(recos)}
 
@@ -152,6 +166,7 @@ def chat(message: ChatMessage):
     if not message.message.strip():
         raise HTTPException(status_code=422, detail="empty message")
     with session() as conn:
+        require_user(conn, message.user_id)
         turn = brain.chat_turn(conn, message.user_id, message.message, message.conversation_id, message.k)
     return {**turn, "recommendations": with_cards(turn["recommendations"])}
 
@@ -170,8 +185,9 @@ def log_interaction(interaction: Interaction):
         kind = profile.normalize_type(interaction.type)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error))
+    require_films([interaction.movie_id])
     with session() as conn:
-        profile.ensure_user(conn, interaction.user_id)
+        require_user(conn, interaction.user_id)
         row_id = profile.log_interaction(conn, interaction.user_id, interaction.movie_id, kind, interaction.source,
                                          interaction.value, interaction.conversation_id)
         if kind in profile.OPINIONS or kind == "rating":

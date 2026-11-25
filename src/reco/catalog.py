@@ -21,6 +21,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import normalize
 
 from .mock_catalog import load_mock_catalog
+from .origin import infer_origins
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MOVIES_PATH = ROOT / "data" / "processed" / "movies.parquet"
@@ -53,6 +54,14 @@ def normalize_text(s: str, strip_article: bool = True) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+def _split_people(x) -> list[str]:
+    if isinstance(x, (list, tuple, np.ndarray)):
+        return [str(v).strip() for v in x if str(v).strip()]
+    if not isinstance(x, str):
+        return []
+    return [v.strip() for v in x.split(",") if v.strip()]
+
+
 def _split(x) -> list[str]:
     if x is None or (isinstance(x, float) and np.isnan(x)):
         return []
@@ -72,7 +81,12 @@ class Catalog:
         df["year"] = pd.to_numeric(df.get("year"), errors="coerce")
         df["pop"] = self._popularity(df)
         df["quality"] = self._quality(df)
+        df["directors"] = (df["directors"] if "directors" in df else pd.Series([""] * len(df))).apply(_split_people)
+        df["cast"] = (df["cast"] if "cast" in df else pd.Series([""] * len(df))).apply(_split_people)
+        df["origin"] = infer_origins(df.assign(directors=df["directors"].map(", ".join),
+                                               cast=df["cast"].map(", ".join)))
         self.df = df
+        self.origins = df["origin"].to_numpy()
         self.ids = df["movie_id"].to_numpy()
         self.id_to_row = {int(m): i for i, m in enumerate(self.ids)}
         self.genre_matrix = np.array(
@@ -83,6 +97,7 @@ class Catalog:
             for t, tg, gs in zip(df["title"], df["tags"], df["genres"])
         ]
         self._build_title_index()
+        self._build_people_index()
         self._build_content_index()
 
     # ------------------------------------------------------------------ popularité
@@ -152,6 +167,65 @@ class Catalog:
                 found.append(mid)
         return list(dict.fromkeys(found))
 
+    # ------------------------------------------------------------------ réalisateurs et acteurs
+    def _build_people_index(self):
+        """nom normalisé -> lignes des films, séparément pour les réalisateurs et les acteurs.
+        Les noms de famille seuls (« Nolan », « Miyazaki ») pointent vers la personne la plus connue qui le porte."""
+        self.director_rows: dict[str, list[int]] = {}
+        self.actor_rows: dict[str, list[int]] = {}
+        self.person_name: dict[str, str] = {}  # clé normalisée -> nom affiché
+        weight: dict[str, float] = {}
+        pop = self.df["pop"].to_numpy()
+        for i, (ds, cs) in enumerate(zip(self.df["directors"], self.df["cast"])):
+            for role, names in (("director", ds), ("actor", cs)):
+                for name in names:
+                    k = normalize_text(name, False)
+                    if len(k) < 4 or " " not in k:
+                        continue
+                    (self.director_rows if role == "director" else self.actor_rows).setdefault(k, []).append(i)
+                    self.person_name.setdefault(k, name)
+                    weight[k] = weight.get(k, 0.0) + 1.0 + pop[i]
+        # nom de famille seul : seulement pour des gens qui ont plusieurs films
+        self.surname_to_key: dict[str, str] = {}
+        best: dict[str, float] = {}
+        for k, w in weight.items():
+            n_films = len(self.director_rows.get(k, [])) + len(self.actor_rows.get(k, []))
+            if n_films < 3:
+                continue
+            last = k.split()[-1]
+            if len(last) < 4:
+                continue
+            if w > best.get(last, 0.0):
+                best[last], self.surname_to_key[last] = w, k
+        self.person_keys = set(self.person_name)
+
+    def people_rows(self, directors=(), actors=()) -> np.ndarray:
+        """Masque des films réalisés par l'un des `directors` et/ou joués par l'un des `actors`.
+        « un film de Scorsese avec De Niro » : les deux à la fois s'il en existe, sinon l'un ou l'autre."""
+        masks = []
+        for names, index in ((directors, self.director_rows), (actors, self.actor_rows)):
+            mask = np.zeros(len(self.ids), dtype=bool)
+            for name in names or []:
+                k = self.resolve_person(name)
+                if k and k in index:
+                    mask[index[k]] = True
+            if mask.any():
+                masks.append(mask)
+        if not masks:
+            return np.zeros(len(self.ids), dtype=bool)
+        both = np.logical_and.reduce(masks)
+        return both if both.any() else np.logical_or.reduce(masks)
+
+    def resolve_person(self, name: str) -> str | None:
+        """« nolan », « Christopher Nolan », « Hayao Miyazaki » -> clé normalisée connue du catalogue."""
+        k = normalize_text(str(name), False)
+        if k in self.person_keys:
+            return k
+        if k in self.surname_to_key:
+            return self.surname_to_key[k]
+        close = difflib.get_close_matches(k, self.person_keys, n=1, cutoff=0.88) if len(k) >= 6 else []
+        return close[0] if close else None
+
     # ------------------------------------------------------------------ contenu
     def _content_text(self, row) -> str:
         genres = " ".join(row["genres"]) * 2
@@ -212,6 +286,9 @@ class Catalog:
             "overview": r["overview"],
             "poster_url": r.get("poster_url"),
             "popularity": float(r["pop"]),
+            "directors": list(r["directors"]),
+            "cast": list(r["cast"]),
+            "origin": r["origin"],
         }
 
     def __len__(self):

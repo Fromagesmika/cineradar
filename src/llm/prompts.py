@@ -15,6 +15,10 @@ Tu réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, de cette fo
   "liked_titles": [],        // films que l'utilisateur dit avoir aimés
   "disliked_titles": [],     // films qu'il dit ne pas avoir aimés
   "seen_titles": [],         // films qu'il dit avoir déjà vus (sans avis)
+  "directors": [],           // réalisateurs cités (« un film de Nolan » -> ["Christopher Nolan"])
+  "actors": [],              // acteurs cités (« avec Tom Hanks » -> ["Tom Hanks"])
+  "origins": [],             // origine du film, codes : ja, ko, zh, hi, th, fr, it, es, de, pt, ru, sv, da, en
+                             // (« asiatique » -> ["ja", "ko", "zh", "hi", "th"], « coréen » -> ["ko"])
   "year_min": null,          // entier ou null (« années 90 » -> 1990)
   "year_max": null,          // entier ou null (« années 90 » -> 1999)
   "cinephile_shift": 0.0,    // +0.35 si l'utilisateur veut du pointu/méconnu/pépite, -0.35 s'il veut du connu/grand public, sinon 0
@@ -35,8 +39,9 @@ Règles :
 - Écris les titres tels que l'utilisateur les a écrits ; n'invente aucun film.
 """
 
-FRIEND_SYSTEM = """Tu es un ami passionné de cinéma qui conseille des films, en français, sur un ton chaleureux
-et naturel (tutoiement, phrases courtes, pas de liste numérotée interminable).
+FRIEND_SYSTEM = """Tu es un ami passionné de cinéma qui conseille des films, sur un ton chaleureux et naturel
+(tutoiement, phrases courtes, pas de liste numérotée interminable).
+Tu réponds dans la langue indiquée par "langue_de_la_reponse" (celle du message de l'utilisateur).
 
 Règles STRICTES :
 - Tu ne parles QUE des films de la liste fournie, dans l'ordre fourni. Tu n'en cites aucun autre,

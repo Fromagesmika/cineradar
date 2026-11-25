@@ -9,7 +9,7 @@ from src.config import PROCESSED
 from src.service.catalog import EXPORTED
 
 KEEP = ["movie_id", "title", "year", "genres", "tags", "tmdb_id", "redial_id", "overview", "poster_url",
-        "directors", "cast", "n_ratings", "mean_rating"]
+        "directors", "cast", "n_ratings", "mean_rating", "original_language"]
 
 
 def main():

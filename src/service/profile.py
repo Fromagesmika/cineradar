@@ -33,6 +33,10 @@ def create_user(conn, pseudo: str | None = None) -> int:
     return int(cursor.lastrowid)
 
 
+def user_exists(conn, user_id: int) -> bool:
+    return conn.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,)).fetchone() is not None
+
+
 def ensure_user(conn, user_id: int) -> int:
     if conn.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,)).fetchone() is None:
         conn.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
