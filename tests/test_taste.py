@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 import pytest
-import torch
+torch = pytest.importorskip("torch")  # the model tests need requirements-train.txt
 
 from src.config import MODELS, RESULTS
 from src.data.split import build_graph

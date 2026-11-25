@@ -1,0 +1,5 @@
+# Only needed to rebuild the data and retrain the model (PyTorch is large, about 200 MB to 2.5 GB)
+-r requirements.txt
+torch
+sentence-transformers
+matplotlib

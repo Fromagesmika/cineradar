@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CinéRadar demo launcher for macOS and Linux: bash demo.sh, then Ctrl+C to stop everything
+# CinéRadar launcher for macOS and Linux: bash start.sh, then Ctrl+C to stop everything
 cd "$(dirname "$0")"
 PY=python3
 [ -x .venv/bin/python ] && PY=.venv/bin/python

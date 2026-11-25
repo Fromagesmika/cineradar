@@ -1,17 +1,22 @@
 @echo off
-rem CineRadar demo launcher for Windows: double-click this file
+rem CineRadar launcher for Windows: double-click this file
 rem It starts the API and the app in two windows, then opens the browser
 rem Close the two windows to stop everything
 cd /d "%~dp0"
 
 rem Use the first Python that can already import the API (the project venv, then the global one)
 set PY=
+set READY=
 if exist ".venv\Scripts\python.exe" .venv\Scripts\python.exe -c "import api.main, streamlit" 2>nul && set PY=.venv\Scripts\python.exe
 if not defined PY python -c "import api.main, streamlit" 2>nul && set PY=python
-if not defined PY (
-    set PY=python
+if defined PY set READY=1
+
+rem Nothing ready yet: install into the project venv if there is one, else into the global Python
+if not defined PY set PY=python
+if not defined READY if exist ".venv\Scripts\python.exe" set PY=.venv\Scripts\python.exe
+if not defined READY (
     echo Installing the requirements, this only happens the first time and takes a few minutes...
-    python -m pip install -r requirements.txt
+    %PY% -m pip install -r requirements.txt
     if errorlevel 1 (
         echo Install failed. Check that Python 3.10 or newer is installed and on the PATH
         pause

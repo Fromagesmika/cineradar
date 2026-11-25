@@ -1,14 +1,12 @@
+# Everything needed to run the app and the tests (about 1 to 3 minutes to install)
 numpy
 pandas
 pyarrow
 scipy
 scikit-learn
-torch
-sentence-transformers
-matplotlib
 fastapi
 uvicorn
-streamlit>=1.31
+streamlit>=1.46
 requests
 pytest
 httpx

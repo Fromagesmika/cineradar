@@ -8,27 +8,40 @@ RecSys Startup Sprint, Group 18: Théodore BRICOUT, Benoît QUARANTA, Michaël L
 
 ## Run the app in 10 minutes
 
-You need Python 3.10 or newer. The raw data and the trained model are not needed: the film catalog and the film vectors are committed in `artifacts/`
+You need Python 3.10 or newer and an internet connection for the install. You do not need the raw data, the trained model or an API key: the film catalog and the film vectors are committed in `artifacts/`
 
-1. Clone the repository and install the dependencies (about 5 minutes, mostly PyTorch)
-   ```bash
+1. Get the code and install the dependencies (1 to 3 minutes). If you start from the ZIP, unzip it and start from `cd cineradar`
+
+   Windows, in PowerShell or cmd
+   ```
    git clone https://github.com/Fromagesmika/cineradar.git
    cd cineradar
    python -m venv .venv
-   # Windows: .venv\Scripts\activate    |    Mac/Linux: source .venv/bin/activate
-   pip install -r requirements.txt
+   .venv\Scripts\python -m pip install -r requirements.txt
    ```
-2. Start the demo. On Windows, double-click `demo.bat`. On Mac or Linux, run `bash demo.sh`. The script starts the API, waits about 20 seconds while it loads the 62,000 films, starts the web app and opens http://127.0.0.1:8501 in your browser. Close the two windows (or press Ctrl+C on Mac and Linux) to stop it
-
-   To start the two parts by hand instead, run each command in its own terminal, with the environment activated
+   Mac or Linux
    ```bash
-   uvicorn api.main:app
-   streamlit run app/streamlit_app.py
+   git clone https://github.com/Fromagesmika/cineradar.git
+   cd cineradar
+   python3 -m venv .venv
+   .venv/bin/python -m pip install -r requirements.txt
    ```
-   The API endpoints can be tested at http://127.0.0.1:8000/docs
-3. Pick a nickname, answer the questionnaire and start chatting. You can write in French or in English, for example "un film comme Heat, mais moins connu" or "something like Blade Runner but more recent". Under each film, the Liked, Disliked, Seen and Not for me buttons change what comes next, and the slider in the sidebar moves from mainstream picks to hidden gems
+2. Start CinéRadar, from the same folder
 
-On Windows, use 127.0.0.1 rather than localhost: localhost first tries IPv6 and every call then waits 2 seconds
+   Windows: `start.bat` (or double-click `start.bat` in the file explorer)
+
+   Mac or Linux: `bash start.sh`
+
+   The script starts the API, waits about 20 seconds while it loads the 62,000 films, starts the web app and opens http://127.0.0.1:8501 in your browser. To stop, close the two windows it opened (on Mac and Linux, press Ctrl+C)
+3. Try it
+   - Pick a nickname and press Start
+   - Pick at least 5 films you loved (the search box finds any film), and if you like, the genres you love or avoid and a few films you disliked. Then press Build my profile
+   - On the Chat page, click one of the example requests or write your own, in French or in English, for example "un film comme Heat, mais moins connu" or "something like Blade Runner but more recent"
+   - Under each film, the Liked, Disliked, Seen and Not for me buttons change what comes next. The slider in the sidebar moves from mainstream picks to hidden gems. The For you page recommends films without a request, and My profile shows what the app has learned about you
+
+To start the two parts by hand instead, activate the environment and run `uvicorn api.main:app` in one terminal and `streamlit run app/streamlit_app.py` in a second one, then open http://127.0.0.1:8501. The API documentation is at http://127.0.0.1:8000/docs. On Windows, use 127.0.0.1 rather than localhost: localhost first tries IPv6, and every call then waits 2 seconds
+
+If the API window shows an error about port 8000 or 8501, another program already uses that port: close it and start again. If `python` is not found on Windows, use `py -3` instead
 
 No API key is needed. Without one, the chat reads messages with rules and answers with sentence templates. With an `ANTHROPIC_API_KEY` (or an `OPENAI_API_KEY`, see `src/llm/client.py`) set before starting the API, a language model reads the messages and writes the answers. It may only talk about the films the ranking gave it, and the code falls back to the rules if it names another film or if the call fails
 
@@ -103,6 +116,8 @@ The full system scores three times the popularity baseline on NDCG@10 (0.037 aga
 
 ## Rebuild the data and retrain (optional)
 
+This part needs PyTorch and sentence-transformers, which the app itself does not use: `pip install -r requirements-train.txt`
+
 This takes about one hour on a laptop CPU and about 1.5 GB of downloads
 
 ```bash
@@ -159,8 +174,8 @@ cineradar/
 │   ├── reco/       candidates, ranking, hidden gems, user memory
 │   └── service/    database, profile, catalog, chat turn
 ├── tests/          55 tests
-├── demo.bat        one-click demo launcher for Windows
-└── demo.sh         the same for Mac and Linux
+├── start.bat       starts the API and the app on Windows
+└── start.sh        the same for Mac and Linux
 ```
 
 ## Tests
@@ -170,6 +185,8 @@ pytest
 ```
 
 The tests take about 2 minutes. They check the model code on a synthetic graph, the chat brain on a small catalog of 79 films, and the database and API on the real catalog, including that a click changes the next recommendations
+
+With only `requirements.txt` installed, the 7 model tests are skipped because they need PyTorch. Install `requirements-train.txt` to run all 55
 
 ## Limits
 
