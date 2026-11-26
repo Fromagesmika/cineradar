@@ -190,7 +190,7 @@ cineradar/
 │   ├── llm/        message reading and reply (rules or language model)
 │   ├── reco/       candidates, ranking, hidden gems, user memory
 │   └── service/    database, profile, catalog, chat turn
-├── tests/          65 tests
+├── tests/          67 tests
 ├── start.bat       installs on the first run, then starts the API and the app (Windows)
 └── start.sh        the same for Mac and Linux
 ```
