@@ -51,6 +51,17 @@ If the API window shows an error about port 8000 or 8501, another program alread
 
 No API key is needed. Without one, the chat reads messages with rules and answers with sentence templates. With an `ANTHROPIC_API_KEY` (or an `OPENAI_API_KEY`, see `src/llm/client.py`) set before starting the API, a language model reads the messages and writes the answers. It may only talk about the films the ranking gave it, and the code falls back to the rules if it names another film or if the call fails
 
+## Online version
+
+The app also runs online, behind an access code, at https://benlebosss.github.io/cineradar/ (a page to bookmark, also on a phone home screen). That page only asks for the code, then shows the app, which runs on Streamlit Community Cloud from `deploy/streamlit_cloud.py`:
+
+- the API starts inside the same program and listens on 127.0.0.1 only, with a random secret token, so nobody can call it from outside
+- the app stays closed without the right code (`CINERADAR_ACCESS_CODE` in the app's secrets on Streamlit Cloud), checked on the server, with a lockout after 8 wrong codes in 10 minutes
+- the API limits each visitor to 20 chat messages per minute and 30 new profiles per hour
+- the profiles database starts empty again when the cloud app restarts
+
+To deploy your own copy: on share.streamlit.io, create an app from this repository with `deploy/streamlit_cloud.py` as the main file, add the secret `CINERADAR_ACCESS_CODE = "your code"`, then put the app's address in `docs/index.html` and turn on GitHub Pages from the `docs` folder. `deploy/huggingface/` does the same on a Hugging Face Docker Space (a paid option there)
+
 ## How it works
 
 A chat turn goes through four parts

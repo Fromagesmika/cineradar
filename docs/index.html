@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="manifest" href="manifest.json">
 <style>
-  /* This page is only the front door: the app itself runs on a Hugging Face Space and checks the code there */
+  /* This page is only the front door: the app itself runs on Streamlit Community Cloud and checks the code there */
   :root {color-scheme: dark}
   * {box-sizing: border-box}
   html, body {margin: 0; height: 100%; background: #0e0e15; color: #ececf1;
@@ -65,8 +65,8 @@
 <iframe id="app" title="CinéRadar" allow="clipboard-write"></iframe>
 <button id="change" type="button">change code or ID</button>
 <script>
-  // The address of the Hugging Face Space that runs the app (?space=... in the link overrides it)
-  const SPACE = new URLSearchParams(location.search).get("space") || "https://SPACE-OWNER-cineradar.hf.space";
+  // The address where the app runs, on Streamlit Community Cloud (?app=... in the link overrides it)
+  const APP = new URLSearchParams(location.search).get("app") || "https://cineradar-benlebosss.streamlit.app";
   const KEY = "cineradar";
 
   function load() {
@@ -76,8 +76,9 @@
     try { localStorage.setItem(KEY, JSON.stringify(value)); } catch (e) { /* private mode: asked again next time */ }
   }
   function open(saved) {
-    // The code goes to the Space, which checks it on its server and removes it from its address bar
-    const url = new URL(SPACE);
+    // The code goes to the app, which checks it on its server and removes it from its address bar
+    const url = new URL(APP);
+    url.searchParams.set("embed", "true");  // Streamlit Cloud: app only, without its own frame
     url.searchParams.set("code", saved.code);
     if (saved.user) url.searchParams.set("user", saved.user);
     const frame = document.getElementById("app");
