@@ -6,6 +6,8 @@ Under the hood, a graph model (NLGCL, Xu et al., RecSys 2025) learns taste from 
 
 RecSys Startup Sprint, Group 18: Théodore BRICOUT, Benoît QUARANTA, Michaël LOPEZ, Rayan DAOUDI
 
+Demo video (70 s): https://drive.google.com/file/d/1hTBBxxW5x-uwwPXERKUoYfbxIWkU9jVT/view?usp=sharing
+
 ## Run the app in 10 minutes
 
 You need Python 3.10 or newer and an internet connection for the install. You do not need the raw data, the trained model or an API key: the film catalog and the film vectors are committed in `artifacts/`
@@ -38,10 +40,12 @@ You need Python 3.10 or newer and an internet connection for the install. You do
 3. Try it
    - Pick a nickname and press Start
    - Pick at least 5 films you loved (the search box finds any film), and if you like, the genres you love or avoid and a few films you disliked. Then press Build my profile
-   - On the Chat page, click one of the example requests or write your own, in French or in English, for example "un film comme Heat, mais moins connu" or "something like Blade Runner but more recent"
+   - On the Chat page, click one of the example requests or write your own, in French or in English, for example "un film comme Heat, mais moins connu", "something like Blade Runner but more recent", "a Christopher Nolan film" or "a Korean thriller". The friend answers in the language of your message
    - Under each film, the Liked, Disliked, Seen and Not for me buttons change what comes next. The slider in the sidebar moves from mainstream picks to hidden gems. The For you page recommends films without a request, and My profile shows what the app has learned about you
 
 To start the two parts by hand instead, activate the environment and run `uvicorn api.main:app` in one terminal and `streamlit run app/streamlit_app.py` in a second one, then open http://127.0.0.1:8501. The API documentation is at http://127.0.0.1:8000/docs. On Windows, use 127.0.0.1 rather than localhost: localhost first tries IPv6, and every call then waits 2 seconds
+
+The app also works on a phone. With the API running, start the web app with `streamlit run app/streamlit_app.py --server.address 0.0.0.0`, then open `http://<IP of the computer>:8501` on a phone connected to the same Wi-Fi (on Windows, `ipconfig` gives the IP, and the firewall may ask to allow Python on private networks)
 
 If the API window shows an error about port 8000 or 8501, another program already uses that port: close it and start again. If `python` is not found on Windows, use `py -3` instead
 
@@ -53,7 +57,7 @@ A chat turn goes through four parts
 
 1. Data (`src/data/`). MovieLens 25M gives the ratings. TMDB gives a summary, a poster, the director and the cast for 61,351 of the 62,423 films. ReDial gives 11,348 real English dialogues between a person looking for a film and a person recommending one, and 94% of the film mentions in them are linked to MovieLens films
 2. Taste model (`src/model/`). NLGCL learns one vector per user and per film from the likes (4 stars or more) of 15,000 MovieLens users. Every film also gets a vector learned from its text (title, genres, tags, summary), which is the only signal for films outside the graph. A new user needs no retraining: their vector is a weighted mean of the films they liked, minus half of the films they disliked
-3. Chat brain (`src/llm/`, `src/reco/`). The message becomes a request: genres, keywords, reference films ("like Heat"), period, films you loved or hated. Candidates are picked for the request, then ranked by request match, taste vector and user memory. The hidden-gem step then moves films up or down according to the slider and the average MovieLens rating, so a hidden gem is a film that is both little known and well rated. The reply explains each pick ("because you liked X")
+3. Chat brain (`src/llm/`, `src/reco/`). The message becomes a request: genres, keywords, reference films ("like Heat"), directors and actors ("a Nolan film"), country of origin ("a Korean thriller"), period, films you loved or hated. The country of a film comes from its original title, its tags and its cast (`src/reco/origin.py`). Candidates are picked for the request, then ranked by request match, taste vector and user memory. The hidden-gem step then moves films up or down according to the slider and the average MovieLens rating, so a hidden gem is a film that is both little known and well rated. The reply explains each pick ("because you liked X"), in the language of the message
 4. Database, API and app (`src/service/`, `api/`, `app/`). Every answer to the questionnaire, every film named in the chat and every click (liked, disliked, seen, not for me) is stored in SQLite. The next recommendation reads this memory, so a click changes what comes next
 
 ### Database
@@ -175,7 +179,7 @@ cineradar/
 │   ├── llm/        message reading and reply (rules or language model)
 │   ├── reco/       candidates, ranking, hidden gems, user memory
 │   └── service/    database, profile, catalog, chat turn
-├── tests/          55 tests
+├── tests/          65 tests
 ├── start.bat       installs on the first run, then starts the API and the app (Windows)
 └── start.sh        the same for Mac and Linux
 ```
@@ -188,7 +192,7 @@ pytest
 
 The tests take about 2 minutes. They check the model code on a synthetic graph, the chat brain on a small catalog of 79 films, and the database and API on the real catalog, including that a click changes the next recommendations
 
-With only `requirements.txt` installed, the model tests (tests/test_taste.py) are skipped because they need PyTorch. Install `requirements-train.txt` to run all 55
+With only `requirements.txt` installed, the model tests (tests/test_taste.py) are skipped because they need PyTorch. Install `requirements-train.txt` to run all 65
 
 ## Limits
 
