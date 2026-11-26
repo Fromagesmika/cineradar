@@ -190,7 +190,7 @@ cineradar/
 │   ├── llm/        message reading and reply (rules or language model)
 │   ├── reco/       candidates, ranking, hidden gems, user memory
 │   └── service/    database, profile, catalog, chat turn
-├── tests/          67 tests
+├── tests/          73 tests
 ├── start.bat       installs on the first run, then starts the API and the app (Windows)
 └── start.sh        the same for Mac and Linux
 ```
@@ -203,7 +203,7 @@ pytest
 
 The tests take about 2 minutes. They check the model code on a synthetic graph, the chat brain on a small catalog of 79 films, and the database and API on the real catalog, including that a click changes the next recommendations
 
-With only `requirements.txt` installed, the model tests (tests/test_taste.py) are skipped because they need PyTorch. Install `requirements-train.txt` to run all 65
+With only `requirements.txt` installed, the model tests (tests/test_taste.py) are skipped because they need PyTorch, so 66 tests run. Install `requirements-train.txt` to run all 73
 
 ## Limits
 
