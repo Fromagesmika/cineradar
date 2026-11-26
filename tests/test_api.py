@@ -9,7 +9,9 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path, monkeypatch):
+    from api import main
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "api.db")
+    main._calls.clear()  # each test starts with no call counted by the rate limits
 
 
 def new_user(liked=(1214, 541, 924, 1232, 2571)):
@@ -96,3 +98,26 @@ def test_click_changes_next_recommendations():
 
 def test_search_movies():
     assert client.get("/movies/search", params={"q": "godfather"}).json()[0]["movie_id"] == 858
+
+
+def test_api_token_is_required_when_set(monkeypatch):
+    from api import main
+    monkeypatch.setattr(main, "API_TOKEN", "secret-token")
+    assert client.get("/health").status_code == 200  # the health check stays open
+    assert client.get("/genres").status_code == 401
+    assert client.get("/genres", headers={"X-CineRadar-Token": "wrong"}).status_code == 401
+    assert client.get("/genres", headers={"X-CineRadar-Token": "secret-token"}).status_code == 200
+
+
+def test_chat_is_rate_limited_per_visitor(monkeypatch):
+    from api import main
+    monkeypatch.setitem(main.LIMITS, "chat", 2)
+    user_id = new_user()
+    me = {"X-CineRadar-Client": "visitor-a"}
+    statuses = [client.post("/chat", json={"user_id": user_id, "message": "un thriller"}, headers=me).status_code
+                for _ in range(3)]
+    assert statuses == [200, 200, 429]
+    # another visitor is not blocked by the first one
+    other = client.post("/chat", json={"user_id": user_id, "message": "un thriller"},
+                        headers={"X-CineRadar-Client": "visitor-b"})
+    assert other.status_code == 200

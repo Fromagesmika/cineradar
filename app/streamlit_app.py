@@ -1,4 +1,7 @@
+import hashlib
+import hmac
 import os
+import time
 from html import escape
 
 import requests
@@ -6,6 +9,10 @@ import streamlit as st
 
 # 127.0.0.1 and not localhost: on Windows, localhost tries IPv6 first and every call then waits 2 s
 API_URL = os.environ.get("CINERADAR_API", "http://127.0.0.1:8000")
+# Online only (empty in local use): the code people type to open the app, and the secret the app sends to the API
+ACCESS_CODE = os.environ.get("CINERADAR_ACCESS_CODE", "")
+API_TOKEN = os.environ.get("CINERADAR_API_TOKEN", "")
+MAX_WRONG_CODES = 8  # per visitor and per 10 minutes
 MIN_LIKES = 5
 BUTTONS = [("Liked", "liked", "Liked it"), ("Disliked", "disliked", "Didn't like it"),
            ("Seen", "seen", "Already seen"), ("Not for me", "not_interested", "Not interested")]
@@ -107,12 +114,23 @@ def compact() -> bool:
 
 @st.cache_resource
 def http() -> requests.Session:
-    return requests.Session()  # keeps the connection to the API open between calls
+    session = requests.Session()  # keeps the connection to the API open between calls
+    if API_TOKEN:
+        session.headers["X-CineRadar-Token"] = API_TOKEN
+    return session
+
+
+def visitor() -> str:
+    # Who is calling, so the API limits each visitor and not everybody at once (hashed, never stored)
+    headers = st.context.headers or {}
+    ip = (headers.get("X-Forwarded-For") or "").split(",")[0].strip() or getattr(st.context, "ip_address", "") or ""
+    return hashlib.sha256(ip.encode()).hexdigest()[:16] if ip else "local"
 
 
 def api(method: str, path: str, **kwargs):
     try:
-        response = http().request(method, f"{API_URL}{path}", timeout=30, **kwargs)
+        response = http().request(method, f"{API_URL}{path}", timeout=30,
+                                  headers={"X-CineRadar-Client": visitor()}, **kwargs)
     except requests.ConnectionError:
         st.error(f"The API is not reachable at {API_URL}. Start it with: uvicorn api.main:app")
         st.stop()
@@ -485,8 +503,65 @@ def sidebar(user: dict):
             st.rerun()
 
 
+@st.cache_resource
+def wrong_codes() -> dict:
+    return {}  # visitor -> times of the last wrong codes, shared by every session of the server
+
+
+def code_is_right(given: str) -> bool:
+    return hmac.compare_digest(given.strip().encode(), ACCESS_CODE.encode())
+
+
+def locked_out() -> bool:
+    recent = [t for t in wrong_codes().get(visitor(), []) if time.time() - t < 600]
+    wrong_codes()[visitor()] = recent
+    return len(recent) >= MAX_WRONG_CODES
+
+
+def access_gate() -> bool:
+    """Online, the app stays closed until the right code is given, typed or in the link (?code=...)."""
+    if not ACCESS_CODE and os.environ.get("CINERADAR_REQUIRE_CODE"):
+        # online without a code configured: stay closed rather than open to everybody
+        st.error("CinéRadar is not configured yet: set the CINERADAR_ACCESS_CODE secret")
+        return False
+    if not ACCESS_CODE or st.session_state.get("access_ok"):
+        return True
+    given = st.query_params.get("code", "")
+    if given and not locked_out():
+        if code_is_right(given):
+            st.session_state.access_ok = True
+            del st.query_params["code"]  # the code does not stay in the address bar
+            return True
+        wrong_codes().setdefault(visitor(), []).append(time.time())
+    st.markdown('<div class="cr-hero"><h1><span class="cr-brand">CinéRadar</span></h1>'
+                "<p>Private beta: enter the access code</p></div>", unsafe_allow_html=True)
+    if locked_out():
+        st.error("Too many wrong codes, try again in 10 minutes")
+        return False
+    with st.form("code"):
+        typed = st.text_input("Access code", type="password")
+        if st.form_submit_button("Open", type="primary"):
+            if code_is_right(typed):
+                st.session_state.access_ok = True
+                st.rerun()
+            wrong_codes().setdefault(visitor(), []).append(time.time())
+            st.error("Wrong code")
+    return False
+
+
+def sign_in_from_link():
+    # ?user=12 in the link (the github.io page adds it) signs in directly, the profile must exist
+    wanted = st.query_params.get("user", "")
+    if "user_id" not in st.session_state and wanted.isdigit():
+        if api("GET", f"/profile/{int(wanted)}"):
+            st.session_state.user_id = int(wanted)
+
+
 def main():
     compact()  # decide the view once per session, before any widget reads it
+    if not access_gate():
+        return
+    sign_in_from_link()
     if "user_id" not in st.session_state:
         st.navigation([st.Page(sign_in, title="Welcome")], position="hidden").run()
         return

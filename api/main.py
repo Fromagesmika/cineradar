@@ -1,12 +1,56 @@
+import hmac
+import os
+import time
+from collections import defaultdict, deque
 from contextlib import contextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from src.model import taste
 from src.service import brain, catalog, db, profile
 
 app = FastAPI(title="CinéRadar API", version="0.3")
+
+
+# ---- protection when the app is online (both are off by default, so nothing changes in local use)
+# CINERADAR_API_TOKEN: every call except /health must carry it in the X-CineRadar-Token header.
+# Online, the API listens only inside the server and the web app is the only one that knows the token.
+API_TOKEN = os.environ.get("CINERADAR_API_TOKEN", "")
+# Calls allowed per client and per minute (chat messages and new users count more, they cost more)
+LIMITS = {"chat": int(os.environ.get("CINERADAR_CHAT_PER_MINUTE", "20")),
+          "users": int(os.environ.get("CINERADAR_USERS_PER_HOUR", "30")),
+          "all": int(os.environ.get("CINERADAR_CALLS_PER_MINUTE", "300"))}
+_calls: dict[tuple, deque] = defaultdict(deque)
+
+
+def _too_many(key: tuple, limit: int, window: float) -> bool:
+    now = time.monotonic()
+    calls = _calls[key]
+    while calls and now - calls[0] > window:
+        calls.popleft()
+    if len(calls) >= limit:
+        return True
+    calls.append(now)
+    return False
+
+
+@app.middleware("http")
+async def guard(request: Request, call_next):
+    path = request.url.path
+    if API_TOKEN and path != "/health":
+        given = request.headers.get("X-CineRadar-Token", "")
+        if not hmac.compare_digest(given.encode(), API_TOKEN.encode()):
+            return JSONResponse({"detail": "missing or wrong API token"}, status_code=401)
+    client = request.headers.get("X-CineRadar-Client") or (request.client.host if request.client else "?")
+    if request.method == "POST" and path == "/chat" and _too_many(("chat", client), LIMITS["chat"], 60):
+        return JSONResponse({"detail": "Too many messages, wait a minute"}, status_code=429)
+    if request.method == "POST" and path == "/users" and _too_many(("users", client), LIMITS["users"], 3600):
+        return JSONResponse({"detail": "Too many new profiles from here, try again later"}, status_code=429)
+    if _too_many(("all", client), LIMITS["all"], 60):
+        return JSONResponse({"detail": "Too many requests, wait a minute"}, status_code=429)
+    return await call_next(request)
 
 
 @app.on_event("startup")
