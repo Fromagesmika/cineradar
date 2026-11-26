@@ -11,6 +11,7 @@ import numpy as np
 
 from src.reco.catalog import get_catalog
 from src.reco.catalog import normalize_text as _nt
+from src.reco.origin import ORIGIN_WORDS, origins_in
 
 
 def normalize_text(s: str) -> str:  # messages : on garde les articles (« un autre »)
@@ -38,6 +39,12 @@ GENRE_LEXICON = {
     "romance": "Romance", "romantique": "Romance", "amour": "Romance", "comedie romantique": "Romance",
     "thriller": "Thriller", "suspense": "Thriller", "thrillers": "Thriller",
     "western": "Western", "westerns": "Western",
+    # en anglais
+    "funny": "Comedy", "comedies": "Comedy", "scary": "Horror", "creepy": "Horror", "animated": "Animation",
+    "cartoon": "Animation", "kids": "Children", "family": "Children", "documentary": "Documentary",
+    "documentaries": "Documentary", "romantic": "Romance", "romcom": "Romance", "mystery": "Mystery",
+    "detective": "Mystery", "crime": "Crime", "gangster movie": "Crime", "fantasy": "Fantasy",
+    "sad": "Drama", "tearjerker": "Drama", "space opera": "Sci-Fi", "science fiction": "Sci-Fi",
 }
 
 # ambiances / thèmes en français -> tags (anglais, comme MovieLens/TMDB)
@@ -47,9 +54,6 @@ KEYWORD_LEXICON = {
     "voyage dans le temps": "time travel", "boucle temporelle": "time loop",
     "arts martiaux": "martial arts", "kung fu": "martial arts", "baston": "martial arts",
     "tueur a gages": "hitman", "tueur en serie": "serial killer", "serial killer": "serial killer",
-    "coreen": "korean", "coreens": "korean", "coreenne": "korean", "coreennes": "korean",
-    "francais": "french", "francaise": "french", "francaises": "french",
-    "japonais": "japanese", "japonaise": "japanese", "hongkongais": "hong kong",
     "course poursuite": "car chase", "courses poursuites": "car chase", "voitures": "car chase",
     "super heros": "superhero", "superheros": "superhero", "robot": "robot", "robots": "robot",
     "intelligence artificielle": "artificial intelligence", "ia": "artificial intelligence",
@@ -61,6 +65,13 @@ KEYWORD_LEXICON = {
     "extraterrestre": "aliens", "extraterrestres": "aliens", "aliens": "aliens",
     "espion": "spy", "espionnage": "spy", "cyberpunk": "cyberpunk", "nostalgique": "melancholic",
     "melancolique": "melancholic", "amitie": "friendship", "culte": "cult",
+    # en anglais (les tags sont déjà en anglais)
+    "ghibli": "studio ghibli", "pixar": "pixar", "disney": "disney",
+    "heist": "heist", "revenge": "revenge", "space": "space", "time travel": "time travel", "hitman": "hitman",
+    "martial arts": "martial arts", "superhero": "superhero", "dystopia": "dystopia", "dystopian": "dystopia",
+    "feel good": "feel-good", "feelgood": "feel-good", "uplifting": "feel-good", "dark": "dark",
+    "mind bending": "mind-bending", "mindbending": "mind-bending", "plot twist": "twist", "spy": "spy",
+    "post apocalyptic": "post-apocalyptic", "road trip": "road trip", "coming of age": "coming of age",
 }
 
 GEM_WORDS = ["pepite", "pepites", "meconnu", "meconnus", "meconnue", "meconnues", "pointu", "pointus", "inde",
@@ -71,7 +82,8 @@ GEM_WORDS = ["pepite", "pepites", "meconnu", "meconnus", "meconnue", "meconnues"
 GEM_WORDS += [f"{a} connu{e}" for a in ("peu", "moins", "pas tres", "pas trop") for e in ("", "e", "s", "es")]
 MAINSTREAM_WORDS = ["connu", "connus", "grand public", "blockbuster", "blockbusters", "populaire",
                     "populaires", "incontournable", "incontournables", "succes", "valeur sure"]
-NEG_WORDS = {"pas", "sans", "evite", "eviter", "evites", "deteste", "jamais", "rien", "marre", "supporte", "aucun"}
+NEG_WORDS = {"pas", "sans", "evite", "eviter", "evites", "deteste", "jamais", "rien", "marre", "supporte", "aucun",
+             "not", "no", "without", "nothing", "avoid", "hate", "never", "don", "isn"}
 
 TRIG_DISLIKE = r"(pas aime|pas kiffe|pas adore|deteste|detestee|nul|horrible|ennuye|ennuyeux|deçu|decu|pas fan)"
 TRIG_REFERENCE = r"(comme|genre|style|similaire|ressemble|dans la veine|du meme genre|a la|facon|proche de)"
@@ -84,11 +96,69 @@ sur t ta te tes toi ton tu un une vos votre vous y film films truc trucs chose q
 envie cherche propose proposes recommande conseille conseilles donne donnes moi peux regarder voir mater soir
 ce soir bien tres trop genre style comme autre autres un peu plutot qqbrk""".split())
 
+# avant un nom : « un film de Nolan » (réalisateur), « avec Tom Hanks » (acteur)
+TRIG_DIRECTOR = r"(de|d|par|by|realise par|realisateur|realisatrice|signe|from|directed by)"
+TRIG_ACTOR = r"(avec|with|starring|joue|acteur|actrice|actor|actress)"
+NOT_A_NAME = set(GENRE_LEXICON) | set(KEYWORD_LEXICON) | set(ORIGIN_WORDS) | {
+    "film", "films", "movie", "movies", "soir", "envie", "classique", "classiques", "recent", "vieux", "nouveau",
+    "connu", "action", "drame", "comedie", "thriller", "animation", "famille", "amis", "potes", "copine",
+    "copain", "enfants", "chose", "truc", "genre", "style", "mieux", "autre", "autres", "meme", "encore"}
+
+
+def _find_people(raw: str, work: str) -> tuple[list[str], list[str], str]:
+    """Réalisateurs et acteurs cités dans le message -> (directors, actors, texte sans ces noms)."""
+    cat = get_catalog()
+    if not getattr(cat, "person_keys", None):
+        return [], [], work
+    # mots avec majuscule, sauf le premier mot d'une phrase (« Donne-moi… », « Something… »)
+    caps = {normalize_text(w) for w in re.findall(r"(?<![.!?]\s)(?<!^)\b[A-Z][\w'’-]+", raw.strip())}
+    tokens = work.split()
+    directors, actors = [], []
+    used = [False] * len(tokens)
+    for n in (3, 2, 1):
+        for i in range(len(tokens) - n + 1):
+            if any(used[i:i + n]):
+                continue
+            phrase = " ".join(tokens[i:i + n])
+            before = " ".join(tokens[max(0, i - 3):i])
+            if n > 1:
+                key = phrase if phrase in cat.person_keys else None
+            else:
+                if phrase in NOT_A_NAME or phrase in STOPWORDS or len(phrase) < 4:
+                    continue
+                trigger = re.search(rf"\b({TRIG_DIRECTOR}|{TRIG_ACTOR})$", before)
+                key = cat.surname_to_key.get(phrase)
+                if key is None:
+                    continue
+                n_films = len(cat.director_rows.get(key, [])) + len(cat.actor_rows.get(key, []))
+                # sans majuscule, un nom seul n'est pris qu'après « de / avec » et pour quelqu'un de prolifique
+                if not (phrase in caps or (trigger and n_films >= 5)):
+                    continue
+            if key is None:
+                continue
+            if re.search(rf"\b{TRIG_ACTOR}$", before):
+                role = "actor"
+            elif re.search(rf"\b{TRIG_DIRECTOR}$", before):
+                # « un film de Tom Hanks » : il a réalisé 2 films mais en a joué 50, c'est l'acteur qu'on veut
+                role = "director" if len(cat.director_rows.get(key, [])) >= 3 or key not in cat.actor_rows else "actor"
+            else:
+                role = "director" if len(cat.director_rows.get(key, [])) >= len(cat.actor_rows.get(key, [])) else "actor"
+            if role == "actor" and key not in cat.actor_rows:
+                role = "director"
+            (directors if role == "director" else actors).append(cat.person_name[key])
+            for j in range(i, i + n):
+                used[j] = True
+    kept = [t if not u else " " * len(t) for t, u in zip(tokens, used)]
+    return list(dict.fromkeys(directors)), list(dict.fromkeys(actors)), " ".join(kept)
+
+
 REFINE_WORDS = ["un autre", "d autres", "autre chose", "encore", "plus recent", "moins", "plutot", "et en",
                 "pareil mais", "la meme chose"]
-CHITCHAT = ["salut", "bonjour", "coucou", "hello", "merci", "cool", "super", "top merci", "ok", "bonsoir"]
+CHITCHAT = ["salut", "bonjour", "coucou", "hello", "merci", "cool", "super", "top merci", "ok", "bonsoir",
+            "hi", "hey", "thanks", "thank you", "great"]
 REQUEST_WORDS = ["film", "films", "conseil", "conseille", "propose", "recommande", "envie", "cherche",
-                 "regarder", "mater", "voir", "idee", "suggestion"]
+                 "regarder", "mater", "voir", "idee", "suggestion",
+                 "movie", "movies", "watch", "recommend", "suggest", "something", "anything", "show me"]
 
 
 def _blank(text: str, phrase: str) -> str:
@@ -178,7 +248,7 @@ def extract_rules(message: str, history: list[dict] | None = None) -> dict:
         "reference_titles": [], "liked_titles": [], "disliked_titles": [], "seen_titles": [],
         "reference_ids": [], "liked_ids": [], "disliked_ids": [], "seen_ids": [],
         "year_min": None, "year_max": None, "cinephile_shift": 0.0, "profile_facts": [], "n": 10,
-        "source": "rules",
+        "directors": [], "actors": [], "origins": [], "source": "rules",
     }
     cat = get_catalog()
 
@@ -192,6 +262,11 @@ def extract_rules(message: str, history: list[dict] | None = None) -> dict:
         for k, v in cat.title_keys.items():
             if v == mid:
                 work = _blank(work, k)
+
+    # ---- réalisateurs, acteurs (on les retire du texte : « Lee » n'est pas un mot-clé)
+    out["directors"], out["actors"], work = _find_people(raw, work)
+    # ---- origine du film (« asiatique », « coréen », « un film japonais »)
+    out["origins"] = origins_in(work)
 
     # ---- genres (avec négation et préférences durables)
     tokens_text = work
@@ -224,7 +299,7 @@ def extract_rules(message: str, history: list[dict] | None = None) -> dict:
 
     # ---- époque
     year_now = dt.date.today().year
-    m = re.search(r"annees? (\d{2,4})", norm)
+    m = re.search(r"annees? (\d{2,4})", norm) or re.search(r"\b(?:the )?(\d{2}|\d{4})s\b", norm)
     if m:
         d = int(m.group(1))
         d = d + 1900 if d < 100 and d >= 30 else (d + 2000 if d < 100 else d)
@@ -237,7 +312,10 @@ def extract_rules(message: str, history: list[dict] | None = None) -> dict:
         # « récent » = les 6 dernières années du catalogue (MovieLens 25M s'arrête en 2019)
         last_year = int(min(year_now, np.nanmax(cat.df["year"].to_numpy(dtype=float))))
         out["year_min"] = last_year - 6
-    if re.search(r"\b(vieux|ancien|anciens|classique noir et blanc|old school)\b", norm):
+    if re.search(r"\b(not too old|not old|pas trop vieux|pas trop ancien)\b", norm):
+        last_year = int(min(year_now, np.nanmax(cat.df["year"].to_numpy(dtype=float))))
+        out["year_min"] = out["year_min"] or last_year - 20
+    elif re.search(r"\b(vieux|ancien|anciens|classique noir et blanc|old school|old|older)\b", norm):
         out["year_max"] = out["year_max"] or 1985
 
     # ---- curseur
@@ -260,7 +338,8 @@ def extract_rules(message: str, history: list[dict] | None = None) -> dict:
         out["profile_facts"].append({"key": "language_pref", "value": "VO"})
 
     # ---- intention
-    has_request = any(re.search(rf"\b{w}\b", norm) for w in REQUEST_WORDS) or out["genres"] or out["keywords"]
+    has_request = (any(re.search(rf"\b{w}\b", norm) for w in REQUEST_WORDS) or out["genres"] or out["keywords"]
+                   or out["origins"] or out["directors"] or out["actors"])
     if re.search(r"\b(c est quoi|parle moi de|de quoi parle|ca raconte quoi|c est bien)\b", norm) and (
         out["liked_ids"] or out["reference_ids"] or out["seen_ids"]
     ):

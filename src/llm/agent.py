@@ -29,7 +29,7 @@ from .prompts import EXTRACTION_SYSTEM, FRIEND_SYSTEM
 from .rules import extract_rules
 
 LIST_FIELDS = ["genres", "excluded_genres", "keywords", "reference_titles", "liked_titles",
-               "disliked_titles", "seen_titles", "profile_facts"]
+               "disliked_titles", "seen_titles", "profile_facts", "directors", "actors", "origins"]
 FR_GENRE = {
     "Action": "action", "Adventure": "aventure", "Animation": "animation", "Children": "famille",
     "Comedy": "comédie", "Crime": "polar", "Documentary": "documentaire", "Drama": "drame",
@@ -79,6 +79,12 @@ def _normalize_intent(d: dict, source: str) -> dict:
             if mid is not None:
                 ids.append(mid)
         out[f"{kind}_ids"] = list(dict.fromkeys(ids))
+    # origines : codes connus seulement (« ja », « ko »…)
+    from src.reco.origin import ORIGIN_WORDS
+    known = set().union(*ORIGIN_WORDS.values())
+    out["origins"] = sorted({str(o).lower() for o in out["origins"] if str(o).lower() in known})
+    out["directors"] = [str(x) for x in out["directors"] if str(x).strip()]
+    out["actors"] = [str(x) for x in out["actors"] if str(x).strip()]
     # faits de profil propres
     facts = []
     for f in out["profile_facts"]:
@@ -138,7 +144,9 @@ def extract(message: str, history: list[dict] | None = None) -> dict:
     if intent is None:
         intent = _normalize_intent(rules, "rules")
     else:
-        # filet de sécurité : on garde les titres que les règles ont trouvés et que le LLM a ratés
+        # filet de sécurité : personnes et origines trouvées par les règles, titres ratés par le LLM
+        for f in ("directors", "actors", "origins"):
+            intent[f] = list(dict.fromkeys(intent.get(f, []) + rules.get(f, [])))
         for kind in ("reference", "liked", "disliked", "seen"):
             intent[f"{kind}_ids"] = list(dict.fromkeys(intent[f"{kind}_ids"] + [
                 m for m in rules[f"{kind}_ids"] if not any(m in intent[f"{o}_ids"] for o in ("reference", "liked", "disliked", "seen"))
@@ -157,9 +165,11 @@ def extract(message: str, history: list[dict] | None = None) -> dict:
 # =========================================================================== reply
 
 
-def _cards(recos: list[dict], profile: dict | None = None) -> list[dict]:
+def _cards(recos: list[dict], profile: dict | None = None, intent: dict | None = None) -> list[dict]:
     cat = get_catalog()
     liked = {cat.find_title(t) for t in (profile or {}).get("liked_titles", [])}
+    asked = [(n, "director") for n in (intent or {}).get("directors", [])] + \
+            [(n, "actor") for n in (intent or {}).get("actors", [])]
     cards = []
     for r in recos:
         m = cat.get(r["movie_id"])
@@ -172,6 +182,12 @@ def _cards(recos: list[dict], profile: dict | None = None) -> list[dict]:
             "because": b["title"] if b else None,
             # vrai « parce que tu as aimé » seulement si le film est dans les goûts connus
             "because_liked": bool(b and b["movie_id"] in liked),
+            "directors": m.get("directors", [])[:2],
+            # la personne demandée (« un film de Nolan ») si elle est dans ce film
+            "person": next(((n, role) for n, role in asked
+                            if cat.resolve_person(n) in {cat.resolve_person(x) for x in
+                                                         (m.get("directors", []) if role == "director" else m.get("cast", []))}),
+                           None),
         })
     return cards
 
@@ -190,6 +206,59 @@ FR_GENRE_PHRASE = {
     "Thriller": "un thriller", "War": "un film de guerre", "Western": "un western",
 }
 
+# ---- langue de la réponse : celle du message (français par défaut)
+FR_HINTS = set("je j tu un une le la les des du pour ce soir moi et avec pas veux voudrais envie aime adore quel "
+               "quelque chose mais bonjour salut merci plutot truc film films comme genre donne propose conseille "
+               "mon ma mes qui que est sur dans sans peu moins plus tres".split())
+EN_HINTS = set("i i'm im me my you a an the for tonight something some with without not no but like want would love "
+               "loved hate please movie movies film films show give recommend any anything good more less less "
+               "recent old funny scary hi hello thanks thank what can".split())
+
+
+def detect_language(message: str) -> str:
+    """'en' si le message est en anglais, sinon 'fr' (la langue par défaut de l'appli)."""
+    raw = message or ""
+    if re.search(r"[éèêàçùâîôœ]", raw):
+        return "fr"
+    words = re.findall(r"[a-z']+", raw.lower())
+    fr = sum(w in FR_HINTS for w in words)
+    en = sum(w in EN_HINTS for w in words)
+    return "en" if en > fr else "fr"
+
+
+EN_GENRE_PHRASE = {
+    "Action": "an action film", "Adventure": "an adventure film", "Animation": "an animated film",
+    "Children": "a family film", "Comedy": "a comedy", "Crime": "a crime film", "Documentary": "a documentary",
+    "Drama": "a drama", "Fantasy": "a fantasy film", "Film-Noir": "a film noir", "Horror": "a horror film",
+    "Musical": "a musical", "Mystery": "a mystery", "Romance": "a romance", "Sci-Fi": "a sci-fi film",
+    "Thriller": "a thriller", "War": "a war film", "Western": "a western",
+}
+EN_OPENERS = ["Ok, I've got just the thing!", "Oh, I have a few ideas.", "I know exactly what you mean.",
+              "Good call, check these out:", "Here's what I'd pick:"]
+EN_CLOSERS = [
+    "Something recent or a classic next time?",
+    "Does that sound good, or should I try another mood?",
+    "Watching alone or with someone?",
+    "Lighter or darker next time?",
+    "Any of these tempting? Tell me if you've already seen them.",
+]
+TEXTS = {
+    "fr": {"none": ("Je n'ai rien trouvé qui colle parfaitement… Tu peux me donner un film que tu as aimé, "
+                    "ou une ambiance (drôle, sombre, action, SF…) ?"),
+           "more": "Et {n} autre{s} idée{s} dans les fiches juste en dessous.",
+           "thanks": "Avec plaisir ! Dis-moi ce que tu en as pensé, ça m'aide à mieux viser la prochaine fois.",
+           "hello": "Salut ! Tu as envie de quoi ce soir ? Un genre, une ambiance, ou un film que tu as adoré ?",
+           "same": "Si ça te plaît, dans le même esprit :",
+           "noted": "Noté, je m'en souviendrai ! "},
+    "en": {"none": ("I couldn't find anything that really fits… Can you give me a film you loved, "
+                    "or a mood (funny, dark, action, sci-fi…)?"),
+           "more": "And {n} more idea{s} in the cards just below.",
+           "thanks": "My pleasure! Tell me what you thought of it, it helps me aim better next time.",
+           "hello": "Hi! What do you feel like watching tonight? A genre, a mood, or a film you loved?",
+           "same": "If you like it, in the same spirit:",
+           "noted": "Got it, I'll remember that! "},
+}
+
 OPENERS = [
     "Ok, j'ai ce qu'il te faut !", "Alors là, j'ai quelques idées.", "Je vois exactement le genre.",
     "Bonne pioche, regarde ça :", "Tiens, je te propose ça :",
@@ -203,11 +272,31 @@ CLOSERS = [
 ]
 
 
-def _line(c: dict, i: int = 0) -> str:
+def _line(c: dict, i: int = 0, lang: str = "fr") -> str:
     year = f" ({c['year']})" if c["year"] else ""
-    genre = FR_GENRE_PHRASE.get(c["genres"][0], "un film") if c["genres"] else "un film"
+    phrases = EN_GENRE_PHRASE if lang == "en" else FR_GENRE_PHRASE
+    genre = phrases.get(c["genres"][0], "a film" if lang == "en" else "un film") if c["genres"] else \
+        ("a film" if lang == "en" else "un film")
     b = c["because"]
-    if b and c.get("because_liked"):
+    person = c.get("person")
+    if lang == "en":
+        if person:
+            name, role = person
+            why = [f"directed by {name}", f"by {name}", f"another {name}"][i % 3] if role == "director" else \
+                  [f"with {name}", f"starring {name}", f"another one with {name}"][i % 3]
+        elif b and c.get("because_liked"):
+            why = [f"because you liked {b}", f"since you loved {b}", f"if you enjoyed {b}, you'll like this one"][i % 3]
+        elif b:
+            why = [f"in the same vein as {b}", f"close to {b}"][i % 2]
+        else:
+            why = [f"{genre} that fits what you asked", f"{genre} I'd recommend without hesitation"][i % 2]
+        gem = ", a real hidden gem" if c["pepite"] else ""
+        return f"• **{c['title']}**{year}: {why}{gem}."
+    if person:
+        name, role = person
+        why = [f"signé {name}", f"de {name}", f"encore un {name}"][i % 3] if role == "director" else \
+              [f"avec {name}", f"{name} au casting", f"encore un film avec {name}"][i % 3]
+    elif b and c.get("because_liked"):
         why = [f"parce que tu as aimé {b}", f"vu que tu as adoré {b}", f"si {b} t'a plu, celui-là aussi"][i % 3]
     elif b:
         why = [f"dans la même veine que {b}", f"proche de {b}"][i % 2]
@@ -217,19 +306,21 @@ def _line(c: dict, i: int = 0) -> str:
     return f"• **{c['title']}**{year} : {why}{gem}."
 
 
-def _template_reply(message: str, profile: dict | None, recos: list[dict], n_highlight: int = 3) -> str:
-    cards = _cards(recos, profile)
+def _template_reply(message: str, profile: dict | None, recos: list[dict], n_highlight: int = 3,
+                    intent: dict | None = None) -> str:
+    lang = detect_language(message)
+    cards = _cards(recos, profile, intent)
     if not cards:
-        return ("Je n'ai rien trouvé qui colle parfaitement… Tu peux me donner un film que tu as aimé, "
-                "ou une ambiance (drôle, sombre, action, SF…) ?")
+        return TEXTS[lang]["none"]
     name = (profile or {}).get("name")
-    opener = random.choice(OPENERS)
+    opener = random.choice(EN_OPENERS if lang == "en" else OPENERS)
     if name:
         opener = f"{name}, " + opener[0].lower() + opener[1:]
-    lines = [opener, *(_line(c, i) for i, c in enumerate(cards[:n_highlight]))]
+    lines = [opener, *(_line(c, i, lang) for i, c in enumerate(cards[:n_highlight]))]
     if len(cards) > n_highlight:
-        lines.append(f"Et {len(cards) - n_highlight} autres idées dans les fiches juste en dessous.")
-    lines.append(random.choice(CLOSERS))
+        rest = len(cards) - n_highlight
+        lines.append(TEXTS[lang]["more"].format(n=rest, s="s" if rest > 1 else ""))
+    lines.append(random.choice(EN_CLOSERS if lang == "en" else CLOSERS))
     return "\n".join(lines)
 
 
@@ -246,16 +337,18 @@ def _reply_is_valid(text: str, recos: list[dict], profile: dict | None) -> bool:
     return bool(mentioned & reco_ids) and mentioned <= allowed
 
 
-def reply(message: str, profile: dict | None, recos: list[dict], n_highlight: int = 3) -> str:
+def reply(message: str, profile: dict | None, recos: list[dict], n_highlight: int = 3,
+          intent: dict | None = None) -> str:
     """Réponse d'ami, uniquement à partir des recos fournies (+ explication « parce que tu as aimé… »)."""
     if not recos:
         return _template_reply(message, profile, recos)
     if client.is_available():
         payload = {
+            "langue_de_la_reponse": "anglais" if detect_language(message) == "en" else "français",
             "message_utilisateur": message,
             "profil": _profile_summary(profile),
             "films_a_proposer_dans_cet_ordre": [
-                {k: v for k, v in c.items() if v not in (None, False, [])} for c in _cards(recos, profile)
+                {k: v for k, v in c.items() if v not in (None, False, [])} for c in _cards(recos, profile, intent)
             ],
         }
         text = client.complete(
@@ -265,7 +358,7 @@ def reply(message: str, profile: dict | None, recos: list[dict], n_highlight: in
         )
         if text and _reply_is_valid(text, recos, profile):
             return text.strip()
-    return _template_reply(message, profile, recos, n_highlight)
+    return _template_reply(message, profile, recos, n_highlight, intent)
 
 
 # =========================================================================== orchestration
@@ -292,27 +385,28 @@ def apply_updates(provider: InMemoryProvider, user_id: int, updates: dict) -> No
         provider.add_fact(user_id, f["key"], f["value"])
 
 
-def _info_reply(intent: dict) -> str | None:
+def _info_reply(intent: dict, lang: str = "fr") -> str | None:
     cat = get_catalog()
     ids = intent.get("reference_ids") or intent.get("liked_ids") or intent.get("seen_ids")
     if not ids:
         return None
     m = cat.get(ids[0])
-    genres = ", ".join(FR_GENRE.get(g, g) for g in m["genres"])
-    return f"**{m['title']}** ({m['year']}) : {genres}. {m['overview']}"
+    genres = ", ".join(m["genres"]) if lang == "en" else ", ".join(FR_GENRE.get(g, g) for g in m["genres"])
+    return f"**{m['title']}** ({m['year']}){'' if lang == 'en' else ' '}: {genres}. {m['overview']}"
 
 
 def chat_turn(user_id: int, message: str, history: list[dict] | None = None,
               cinephile: float | None = None, k: int = 10) -> dict:
     """Un tour de conversation complet : extraction -> recommandations -> réponse -> mises à jour mémoire."""
     intent = extract(message, history)
+    lang = detect_language(message)
     provider = engine.get_memory_provider()
 
     if intent["intent"] == "chitchat":
-        if re.search(r"\bmerci\b", normalize_text(message)):
-            text = "Avec plaisir ! Dis-moi ce que tu en as pensé, ça m'aide à mieux viser la prochaine fois."
+        if re.search(r"\b(merci|thanks|thank you)\b", normalize_text(message)):
+            text = TEXTS[lang]["thanks"]
         else:
-            text = "Salut ! Tu as envie de quoi ce soir ? Un genre, une ambiance, ou un film que tu as adoré ?"
+            text = TEXTS[lang]["hello"]
         return {"reply": text, "recos": [], "intent": intent, "memory_updates": memory_updates_from(intent, [])}
 
     # on applique d'abord ce que le message nous apprend (films aimés, faits), pour que CE tour en profite
@@ -327,14 +421,14 @@ def chat_turn(user_id: int, message: str, history: list[dict] | None = None,
     mem = provider.get(user_id)
     profile = mem.to_profile()
 
-    text = reply(message, profile, recos)
+    text = reply(message, profile, recos, intent=intent)
     if intent["intent"] == "info":
-        info = _info_reply(intent)
+        info = _info_reply(intent, lang)
         if info:
-            text = info + "\n\nSi ça te plaît, dans le même esprit :\n" + "\n".join(
-                _line(c, i) for i, c in enumerate(_cards(recos, profile)[:3]))
+            text = info + f"\n\n{TEXTS[lang]['same']}\n" + "\n".join(
+                _line(c, i, lang) for i, c in enumerate(_cards(recos, profile, intent)[:3]))
     elif intent["intent"] == "feedback" and recos:
-        text = "Noté, je m'en souviendrai ! " + text
+        text = TEXTS[lang]["noted"] + text
 
     updates = memory_updates_from(intent, recos)
     if isinstance(provider, InMemoryProvider):
@@ -343,4 +437,4 @@ def chat_turn(user_id: int, message: str, history: list[dict] | None = None,
     return {"reply": text, "recos": recos, "intent": intent, "memory_updates": updates}
 
 
-__all__ = ["extract", "reply", "chat_turn", "memory_updates_from", "apply_updates"]
+__all__ = ["extract", "reply", "chat_turn", "memory_updates_from", "apply_updates", "detect_language"]

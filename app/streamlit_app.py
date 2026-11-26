@@ -53,8 +53,56 @@ st.markdown("""
 [data-testid="stButtonGroup"] button {padding: 1px 9px; min-height: 0; font-size: .75rem}
 .cr-hero h1 {font-size: 3.6rem; margin-bottom: 0; line-height: 1.1}
 .cr-hero p {font-size: 1.15rem; opacity: .8}
+/* compact card (phones): small poster on the left, text on the right */
+.cr-row {display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: start}
+.cr-row .cr-title {margin-top: 0; min-height: 0; font-size: .95rem}
+.cr-row .cr-meta {white-space: normal}
+.cr-row .cr-gem {top: 4px; left: 4px; font-size: .55rem; padding: 2px 5px}
+@media (max-width: 900px) {
+  .block-container {padding: 3.2rem 1rem 5rem}
+  .cr-hero h1 {font-size: 2.4rem}
+  .cr-hero p {font-size: 1rem}
+  .cr-strip {grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 1rem 0 .5rem}
+  .cr-strip img:nth-child(n+5) {display: none}
+  /* film grids: 2 or 3 per row instead of 5 squeezed ones */
+  [class*="st-key-grid-"] [data-testid="stHorizontalBlock"] {flex-wrap: wrap; gap: .8rem}
+  [class*="st-key-grid-"] [data-testid="stColumn"] {flex: 1 1 calc(33% - .8rem) !important; min-width: calc(33% - .8rem) !important}
+  .cr-shelf {grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px}
+  [data-testid="stMetricValue"] {font-size: 1.5rem}
+}
+@media (max-width: 640px) {
+  [class*="st-key-grid-"] [data-testid="stColumn"] {flex: 1 1 calc(50% - .8rem) !important; min-width: calc(50% - .8rem) !important}
+  .cr-hero h1 {font-size: 2rem}
+  h1 {font-size: 1.9rem !important}
+  h4 {font-size: 1.1rem !important}
+  .cr-bar {grid-template-columns: 90px 1fr 28px}
+  [data-testid="stChatMessage"] {padding: .5rem .25rem}
+}
+/* phone tabs and profile numbers: always side by side */
+.st-key-mobilenav [data-testid="stHorizontalBlock"], .st-key-metrics [data-testid="stHorizontalBlock"] {flex-wrap: nowrap !important; gap: .4rem}
+.st-key-mobilenav [data-testid="stColumn"], .st-key-metrics [data-testid="stColumn"] {min-width: 0 !important; flex: 1 1 0 !important}
+.st-key-mobilenav a {justify-content: center; border: 1px solid rgba(139, 92, 246, .25); border-radius: 10px;
+                     padding: .35rem .2rem; background: rgba(139, 92, 246, .08)}
+.st-key-mobilenav a[aria-current="page"], .st-key-mobilenav a[data-active="true"] {background: rgba(139, 92, 246, .35)}
+@media (hover: none) {
+  [class*="st-key-card-"]:hover {transform: none}
+  [class*="st-key-card-"]:hover .cr-poster {transform: none}
+  [data-testid="stButtonGroup"] button {padding: 6px 12px; font-size: .85rem}  /* bigger touch targets */
+}
 </style>
 """, unsafe_allow_html=True)
+
+
+def is_phone() -> bool:
+    # Phones get the compact view by default, the sidebar toggle can switch it either way
+    agent = (st.context.headers or {}).get("User-Agent", "") if hasattr(st, "context") else ""
+    return any(word in agent for word in ("iPhone", "Android", "Mobile", "iPod"))
+
+
+def compact() -> bool:
+    if "compact" not in st.session_state:
+        st.session_state.compact = is_phone()
+    return st.session_state.compact
 
 
 @st.cache_resource
@@ -129,6 +177,21 @@ def opinion(film: dict, user_id: int, key: str, conversation_id=None):
         st.toast(f"{tip}: {film['title']} saved to your profile")
 
 
+def film_row(film: dict, user_id: int, key: str, conversation_id=None):
+    # Compact card for phones: one film per line, small poster, text beside it
+    with st.container(border=True, key=f"card-{key}-{film['movie_id']}"):
+        text = f'<div class="cr-title">{escape(label(film))}</div><div class="cr-meta">{escape(meta(film))}</div>'
+        if film.get("directors"):
+            text += f'<div class="cr-meta">by {escape(film["directors"].split(",")[0])}</div>'
+        if film.get("because_title"):
+            text += f'<div class="cr-because">Because you liked {escape(film["because_title"])}</div>'
+        st.markdown(f'<div class="cr-row">{poster(film)}<div>{text}</div></div>', unsafe_allow_html=True)
+        if film.get("overview"):
+            with st.expander("Summary"):
+                st.write(film["overview"])
+        opinion(film, user_id, key, conversation_id)
+
+
 def film_card(film: dict, user_id: int, key: str, conversation_id=None):
     with st.container(border=True, key=f"card-{key}-{film['movie_id']}"):
         html = poster(film) + f'<div class="cr-title">{escape(label(film))}</div><div class="cr-meta">{escape(meta(film))}</div>'
@@ -144,11 +207,16 @@ def film_card(film: dict, user_id: int, key: str, conversation_id=None):
 
 
 def film_grid(films: list[dict], user_id: int, key: str, per_row: int = 5, conversation_id=None):
-    for start in range(0, len(films), per_row):
-        columns = st.columns(per_row)
-        for column, film in zip(columns, films[start:start + per_row]):
-            with column:
-                film_card(film, user_id, key, conversation_id)
+    if compact():
+        for film in films:
+            film_row(film, user_id, key, conversation_id)
+        return
+    with st.container(key=f"grid-{key}"):  # the CSS wraps this grid on narrow screens
+        for start in range(0, len(films), per_row):
+            columns = st.columns(per_row)
+            for column, film in zip(columns, films[start:start + per_row]):
+                with column:
+                    film_card(film, user_id, key, conversation_id)
 
 
 def shelf(films: list[dict]):
@@ -179,7 +247,7 @@ def sign_in():
     st.markdown('<div class="cr-hero"><h1><span class="cr-brand">CinéRadar</span></h1>'
                 "<p>Your film-loving friend who finds the hidden gems you would never find alone</p></div>",
                 unsafe_allow_html=True)
-    films = [f for f in (static("/movies/popular", limit=40) or []) if f.get("poster_url")][:8]
+    films = [f for f in (static("/movies/popular", limit=40) or []) if f.get("poster_url")][:4 if compact() else 8]
     if films:
         st.markdown('<div class="cr-strip">' + "".join(f'<img src="{escape(f["poster_url"])}" alt="">' for f in films)
                     + "</div>", unsafe_allow_html=True)
@@ -249,6 +317,17 @@ def questionnaire():
 
 # Pages after sign-in
 
+def quick_settings():
+    # On a phone the sidebar is hidden behind a menu: the slider and the main actions sit at the top
+    if not compact():
+        return
+    user = st.session_state.user
+    with st.popover(f"Settings · hidden gems {user['cinephile_level']:.0%}", icon=":material/tune:",
+                    use_container_width=True):
+        level_slider(user, "level_top")
+        st.button("New conversation", on_click=new_conversation, use_container_width=True, key="new_top")
+
+
 def send_example(text: str):
     st.session_state.pending = text
 
@@ -270,6 +349,7 @@ def chat_page():
     user = st.session_state.user
     st.session_state.setdefault("messages", [])
     st.session_state.setdefault("conversation_id", None)
+    quick_settings()
     prompt = st.chat_input("e.g. an action film for tonight, but not too violent") or st.session_state.pop("pending", None)
     messages = st.session_state.messages
 
@@ -278,9 +358,9 @@ def chat_page():
                  "You can also tell me about films you loved or hated, I'll remember")
         if not messages and not prompt:
             st.caption("Try one of these")
-            columns = st.columns(2)
+            columns = st.columns(1 if compact() else 2)
             for index, text in enumerate(EXAMPLES):
-                columns[index % 2].button(text, on_click=send_example, args=(text,), use_container_width=True)
+                columns[index % len(columns)].button(text, on_click=send_example, args=(text,), use_container_width=True)
 
     last_answer = max((i for i, m in enumerate(messages) if m["role"] == "assistant"), default=-1)
     for index, message in enumerate(messages):
@@ -310,10 +390,15 @@ def chat_page():
 def for_you_page():
     user = st.session_state.user
     header("Your picks", "Picked for you",
-           "From your profile and everything you told me. Move the slider in the sidebar to get more hidden gems")
-    left, right = st.columns([4, 1])
-    genre = left.multiselect("Filter by genre", static("/genres") or [], key="for_you_genres")
-    k = right.number_input("How many", 5, 30, 10, 5)
+           "From your profile and everything you told me. Move the slider in the settings to get more hidden gems")
+    quick_settings()
+    if compact():
+        genre = st.multiselect("Filter by genre", static("/genres") or [], key="for_you_genres")
+        k = 8
+    else:
+        left, right = st.columns([4, 1])
+        genre = left.multiselect("Filter by genre", static("/genres") or [], key="for_you_genres")
+        k = right.number_input("How many", 5, 30, 10, 5)
     with st.spinner("Picking films..."):
         result = api("GET", "/recommend", params={"user_id": user["user_id"], "k": int(k), "genre": genre or None})
     if result:
@@ -323,11 +408,13 @@ def for_you_page():
 def profile_page():
     user = st.session_state.user
     header("Your taste", "My profile", "Everything I know about your taste. It grows with each message and each click")
-    columns = st.columns(4)
-    columns[0].metric("Interactions", user["n_interactions"])
-    columns[1].metric("Films liked", len(user["liked_ids"]))
-    columns[2].metric("Films disliked", len(user["disliked_ids"]))
-    columns[3].metric("Hidden gems level", f"{user['cinephile_level']:.0%}")
+    metrics = [("Interactions", user["n_interactions"]), ("Films liked", len(user["liked_ids"])),
+               ("Films disliked", len(user["disliked_ids"])), ("Hidden gems", f"{user['cinephile_level']:.0%}")]
+    rows = [metrics[:2], metrics[2:]] if compact() else [metrics]  # 2 x 2 on a phone
+    with st.container(key="metrics"):
+        for row in rows:
+            for column, (name, value) in zip(st.columns(len(row)), row):
+                column.metric(name, value)
     left, right = st.columns(2)
     with left:
         st.markdown("**Genres you love**")
@@ -363,8 +450,20 @@ def profile_page():
                      hide_index=True, use_container_width=True)
 
 
-def set_level():
-    api("PATCH", f"/profile/{st.session_state.user_id}", json={"cinephile": st.session_state.level})
+def set_level(key: str = "level"):
+    level = st.session_state[key]
+    api("PATCH", f"/profile/{st.session_state.user_id}", json={"cinephile": level})
+    for other in ("level", "level_top"):  # the sidebar and the phone settings show the same value
+        st.session_state[other] = level
+    st.session_state.user["cinephile_level"] = level
+
+
+def level_slider(user: dict, key: str):
+    st.slider("What kind of films?", 0.0, 1.0, float(user["cinephile_level"]), 0.05,
+              key=key, on_change=set_level, args=(key,),
+              help="Move right and I will suggest films almost nobody has seen, but that people loved")
+    st.markdown('<div class="cr-scale"><span>Mainstream</span><span>Hidden gems</span></div>'
+                f'<div class="cr-level">{level_text(user["cinephile_level"])}</div>', unsafe_allow_html=True)
 
 
 def new_conversation():
@@ -377,18 +476,17 @@ def sidebar(user: dict):
         st.markdown('<h2 style="margin-bottom:0"><span class="cr-brand">CinéRadar</span></h2>', unsafe_allow_html=True)
         st.caption(f"Signed in as **{user.get('pseudo') or 'User'}** (user ID {user['user_id']})")
         if user["onboarding_done"]:
-            st.slider("What kind of films?", 0.0, 1.0, float(user["cinephile_level"]), 0.05,
-                      key="level", on_change=set_level,
-                      help="Move right and I will suggest films almost nobody has seen, but that people loved")
-            st.markdown('<div class="cr-scale"><span>Mainstream</span><span>Hidden gems</span></div>'
-                        f'<div class="cr-level">{level_text(user["cinephile_level"])}</div>', unsafe_allow_html=True)
+            level_slider(user, "level")
             st.button("New conversation", on_click=new_conversation, use_container_width=True)
+        st.toggle("Compact view (phone)", key="compact", help="One film per line with small posters, "
+                  "turned on automatically on phones")
         if st.button("Sign out", use_container_width=True):
             st.session_state.clear()
             st.rerun()
 
 
 def main():
+    compact()  # decide the view once per session, before any widget reads it
     if "user_id" not in st.session_state:
         st.navigation([st.Page(sign_in, title="Welcome")], position="hidden").run()
         return
@@ -404,7 +502,16 @@ def main():
     pages = [st.Page(chat_page, title="Chat", icon=":material/chat:", default=True),
              st.Page(for_you_page, title="For you", icon=":material/movie:", url_path="for-you"),
              st.Page(profile_page, title="My profile", icon=":material/person:", url_path="profile")]
-    st.navigation(pages, position="top").run()
+    if not compact():
+        st.navigation(pages, position="top").run()
+        return
+    # On a phone the top menu folds into the sidebar: a row of three tabs stays visible instead
+    page = st.navigation(pages, position="hidden")
+    with st.container(key="mobilenav"):
+        for column, target in zip(st.columns(3), pages):
+            column.page_link(target, label=target.title.replace("My profile", "Profile"), icon=target.icon,
+                             use_container_width=True)
+    page.run()
 
 
 main()

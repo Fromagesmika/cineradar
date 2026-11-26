@@ -16,7 +16,8 @@ from src.config import ML_DIR, POPULAR_SHARE, PROCESSED, RAW
 
 TMDB_CSV = RAW / "tmdb" / "tmdb_movies.csv"
 POSTER_BASE = "https://image.tmdb.org/t/p/w342"
-ADDED = ["tmdb_id", "overview", "poster_url", "directors", "cast", "n_ratings", "mean_rating", "popularity_bucket"]
+ADDED = ["tmdb_id", "overview", "poster_url", "directors", "cast", "n_ratings", "mean_rating", "popularity_bucket",
+         "original_language"]
 
 
 def first(text, n):
@@ -67,7 +68,8 @@ def main():
 
     movies = pd.read_parquet(PROCESSED / "movies.parquet")
     movies = movies.drop(columns=[c for c in ADDED if c in movies.columns])
-    movies = movies.merge(details.drop(columns=["original_language"]), on="movie_id", how="left")
+    # original_language (code ISO de TMDB : "ja", "ko", "fr"…) sert aux demandes « un film coréen »
+    movies = movies.merge(details, on="movie_id", how="left")
     movies["poster_url"] = movies.pop("poster_path").map(
         lambda p: f"{POSTER_BASE}{p}" if isinstance(p, str) and p.startswith("/") else None)
     for col in ("overview", "directors", "cast"):

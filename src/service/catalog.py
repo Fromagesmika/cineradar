@@ -14,7 +14,7 @@ SEED = Path(__file__).resolve().parent / "seed_movies.csv"
 POSTER_BASE = "https://image.tmdb.org/t/p/w342"
 ARTICLES = ("the", "a", "an", "le", "la", "les", "l", "un", "une", "der", "die", "das", "el", "il")
 COLUMNS = ["movie_id", "title", "year", "genres", "tags", "overview", "poster_url", "tmdb_id", "redial_id",
-           "directors", "cast", "n_ratings", "mean_rating"]
+           "directors", "cast", "n_ratings", "mean_rating", "original_language"]
 
 
 def normalize(text) -> str:

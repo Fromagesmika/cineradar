@@ -25,19 +25,52 @@ def test_health():
 
 
 def test_recommend_returns_k_films():
-    response = client.get("/recommend", params={"user_id": 1, "k": 5})
+    user_id = new_user()
+    response = client.get("/recommend", params={"user_id": user_id, "k": 5})
     assert response.status_code == 200
     assert len(response.json()["recommendations"]) == 5
 
 
 def test_log_interaction_is_saved():
-    response = client.post("/log_interaction", json={"user_id": 1, "movie_id": 318, "type": "like"})
+    user_id = new_user()
+    response = client.post("/log_interaction", json={"user_id": user_id, "movie_id": 318, "type": "like"})
     assert response.status_code == 200
     assert response.json()["status"] == "saved"
 
 
 def test_log_interaction_rejects_unknown_type():
-    assert client.post("/log_interaction", json={"user_id": 1, "movie_id": 318, "type": "love"}).status_code == 422
+    user_id = new_user()
+    assert client.post("/log_interaction", json={"user_id": user_id, "movie_id": 318, "type": "love"}).status_code == 422
+
+
+def test_unknown_user_is_rejected_and_not_created():
+    for call in (lambda: client.get("/recommend", params={"user_id": 999999, "k": 3}),
+                 lambda: client.post("/chat", json={"user_id": 999999, "message": "un thriller"}),
+                 lambda: client.post("/log_interaction", json={"user_id": 999999, "movie_id": 318, "type": "like"}),
+                 lambda: client.post("/onboarding", json={"user_id": 999999, "liked_ids": [318]})):
+        assert call().status_code == 404
+    assert client.get("/profile/999999").status_code == 404
+    # the next real user keeps a normal id instead of 1000000
+    assert client.post("/users", json={"pseudo": "next"}).json()["user_id"] < 999999
+
+
+def test_unknown_film_is_rejected():
+    user_id = new_user()
+    assert client.post("/onboarding", json={"user_id": user_id, "liked_ids": [999999999]}).status_code == 404
+    assert client.post("/log_interaction", json={"user_id": user_id, "movie_id": 999999999,
+                                                 "type": "like"}).status_code == 404
+    liked = client.get(f"/profile/{user_id}").json()["liked_ids"]
+    assert 999999999 not in liked
+
+
+def test_out_of_range_values_are_rejected():
+    user_id = new_user()
+    assert client.patch(f"/profile/{user_id}", json={"cinephile": 5}).status_code == 422
+    assert client.patch(f"/profile/{user_id}", json={"cinephile": -0.1}).status_code == 422
+    assert client.patch(f"/profile/{user_id}", json={"cinephile": 0.8}).json()["cinephile_level"] == 0.8
+    assert client.post("/chat", json={"user_id": user_id, "message": "un film", "k": 0}).status_code == 422
+    assert client.post("/log_interaction", json={"user_id": user_id, "movie_id": 318, "type": "rating",
+                                                 "value": 9}).status_code == 422
 
 
 def test_onboarding_then_profile():

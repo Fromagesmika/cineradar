@@ -201,6 +201,16 @@ def recommend_detailed(
     if genres and not set(normalize_text(query, False).split()) - _GENRE_WORDS:
         query = ""
 
+    # origine (« un film coréen ») et personnes (« un film de Nolan », « avec Tom Hanks »)
+    origins = {str(o) for o in intent.get("origins") or [] if o}
+    directors = [str(d) for d in intent.get("directors") or [] if d]
+    actors = [str(a) for a in intent.get("actors") or [] if a]
+    origin_match = np.isin(cat.origins, list(origins)).astype(float) if origins and hasattr(cat, "origins") else np.zeros(n)
+    people_match = (cat.people_rows(directors, actors).astype(float)
+                    if (directors or actors) and hasattr(cat, "people_rows") else np.zeros(n))
+    wants_people = bool(people_match.any())
+    wants_origin = bool(origin_match.any())
+
     liked = list(dict.fromkeys(msg_liked + (mem.liked_ids if config.use_memory or config.use_taste else [])))
     disliked = list(dict.fromkeys(msg_disliked + (mem.disliked_ids if config.use_memory or config.use_taste else [])))
 
@@ -247,24 +257,33 @@ def recommend_detailed(
             ref_g = cat.genre_matrix[[cat.id_to_row[m] for m in ref_ids]].max(axis=0)
             ref_sim = cat.genre_matrix @ ref_g / max(ref_g.sum(), 1)
 
-    intent_score = 1.0 * genre_match + 0.6 * tag_match + 1.0 * _minmax(sem) + 1.2 * _minmax(ref_sim)
+    intent_score = (1.0 * genre_match + 0.6 * tag_match + 1.0 * _minmax(sem) + 1.2 * _minmax(ref_sim)
+                    + 1.5 * origin_match + 2.0 * people_match)
 
     # ---- pool de candidats (on relâche les contraintes si trop peu de résultats)
-    def pool(require_genre: bool, slack: float | None) -> np.ndarray:
+    def pool(require_genre: bool, slack: float | None, require_origin: bool = True, require_people: bool = True):
         m = mask.copy()
         if require_genre and genres:
             m &= genre_match > 0
         if slack is not None:
             m &= year_mask(slack)
+        if require_origin and wants_origin:
+            m &= origin_match > 0
+        if require_people and wants_people:
+            m &= people_match > 0
         return np.where(m)[0]
 
-    # relâchement progressif : période élargie, puis sans période, puis sans genre imposé
-    steps = [(True, 0), (True, 5), (True, 10), (True, None), (False, 0), (False, None)]
+    # relâchement progressif : période élargie, puis sans période, puis sans genre imposé, et en dernier
+    # recours sans l'origine ni la personne demandées (ce sont les contraintes les plus explicites)
+    steps = [(True, 0), (True, 5), (True, 10), (True, None), (False, 0), (False, None),
+             (False, None, False, True), (False, None, False, False)]
+    # une personne n'a souvent que quelques films : mieux vaut 3 films de Nolan que 10 films au hasard
+    enough = min(k, 3) if wants_people else k
     cand = pool(*steps[0])
-    for rg, slack in steps[1:]:
-        if len(cand) >= k:
+    for step in steps[1:]:
+        if len(cand) >= enough:
             break
-        cand = pool(rg, slack)
+        cand = pool(*step)
     if len(cand) == 0:
         return []
     # ---- goût (partie 2)
@@ -331,12 +350,17 @@ def recommend_detailed(
         base = final[top].astype(float)
         penalty = np.zeros(len(top))
         free = np.ones(len(top), dtype=bool)
+        # « asiatique » : varier les pays plutôt que 10 films japonais
+        top_origin = cat.origins[cand[top]] if len(origins) > 1 else None
+        same_origin = np.zeros(len(top))
         while free.any() and len(chosen) < k:
-            values = np.where(free, base - config.w_diversity * penalty, -np.inf)
+            values = np.where(free, base - config.w_diversity * penalty - 0.12 * same_origin, -np.inf)
             best = int(np.argmax(values))
             chosen.append(top[best])
             free[best] = False
             penalty = np.maximum(penalty, S[:, best])
+            if top_origin is not None:
+                same_origin += top_origin == top_origin[best]
     else:
         chosen = list(top[:k])
 
