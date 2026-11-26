@@ -12,7 +12,7 @@ Test cases come from the ReDial test seekers (src/data/redial.py), never seen in
 - targets: the films the recommender suggested and the seeker did not dislike
 
 Metrics
-- Recall@1/10/50 and NDCG@10 on the targets
+- Recall@1/10/20/50 and NDCG@10 on the targets
 - GemShare@10: share of hidden gems (not in the 20% most rated MovieLens films) in the top 10
 - Coverage@10: share of the catalog that appears in at least one top 10
 - Jaccard@10: two different seekers send the same request ("an action film"); mean overlap of their
@@ -120,7 +120,7 @@ def evaluate(recommend_fn, cases: list[dict] | None = None, n_pairs: int = N_PAI
     cases = cases if cases is not None else build_cases()
     extract = _extractor()
     gems = _gems()
-    recall = {1: [], 10: [], 50: []}
+    recall = {1: [], 10: [], 20: [], 50: []}
     ndcg, gem_share, shown = [], [], set()
     start = time.time()
     for i, case in enumerate(cases):
@@ -150,7 +150,8 @@ def evaluate(recommend_fn, cases: list[dict] | None = None, n_pairs: int = N_PAI
     if catalog_size is None:
         catalog_size = len(pd.read_parquet(PROCESSED / "movies.parquet", columns=["movie_id"]))
     return pd.DataFrame([{
-        "Recall@1": np.mean(recall[1]), "Recall@10": np.mean(recall[10]), "Recall@50": np.mean(recall[50]),
+        "Recall@1": np.mean(recall[1]), "Recall@10": np.mean(recall[10]), "Recall@20": np.mean(recall[20]),
+        "Recall@50": np.mean(recall[50]),
         "NDCG@10": np.mean(ndcg), "GemShare@10": np.mean(gem_share),
         "Coverage@10": len(shown) / catalog_size, "Jaccard@10": np.mean(jaccard) if jaccard else np.nan,
         "cases": len(cases), "sec/request": (time.time() - start) / max(len(cases), 1),

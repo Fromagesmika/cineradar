@@ -98,3 +98,10 @@ def test_cinephile_slider_pushes_hidden_gems(conn):
     mainstream = [r["movie_id"] for r in brain.rank(user, {}, 10, cinephile=0.0)]
     cinephile = [r["movie_id"] for r in brain.rank(user, {}, 10, cinephile=1.0)]
     assert likes.loc[cinephile].mean() < likes.loc[mainstream].mean()
+
+
+def test_card_without_poster_has_no_nan():
+    # 1,981 films have no TMDB poster: a NaN there made /chat answer 500
+    missing = catalog.load()["poster_url"].isna()
+    movie_id = int(catalog.load().index[missing][0])
+    assert catalog.card(movie_id)["poster_url"] is None
